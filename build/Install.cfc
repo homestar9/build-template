@@ -157,7 +157,7 @@ component {
 			return;
 		}
 
-		var template = variables.buildDir & "templates/changelog.md";
+		var template = variables.buildDir & "templates/CHANGELOG.md";
 		if ( fileExists( template ) ) {
 			fileCopy( template, path );
 		} else {
@@ -225,16 +225,22 @@ component {
 	/**
 	 * detectChangelogName
 	 *
-	 * Uses whichever changelog file the project already has, so an existing CHANGELOG.md is
-	 * not duplicated by a lowercase one.
+	 * Returns the name of the changelog the project already has, spelled exactly as it is on
+	 * disk. Falls back to CHANGELOG.md, which is the usual spelling.
+	 *
+	 * It reads the real directory listing rather than testing names one at a time. On Windows
+	 * and macOS, fileExists( "changelog.md" ) is true even when the file is really called
+	 * CHANGELOG.md, so testing names would happily report a spelling that does not exist. That
+	 * name then goes into build.json and works locally while failing on Linux, where the case
+	 * has to match.
 	 */
 	private string function detectChangelogName(){
-		for ( var name in [ "changelog.md", "CHANGELOG.md", "Changelog.md" ] ) {
-			if ( fileExists( variables.root & "/" & name ) ) {
+		for ( var name in directoryList( variables.root, false, "name", "*.md" ) ) {
+			if ( reFindNoCase( "^changelog\.md$", name ) ) {
 				return name;
 			}
 		}
-		return "changelog.md";
+		return "CHANGELOG.md";
 	}
 
 	/**

@@ -59,7 +59,7 @@ component {
 	 * wins over one declared here, and it measures from the task file's folder instead of the
 	 * project root, so paths come back wrong with no error to tell you.
 	 *
-	 * @relative A path relative to the project root, for example "changelog.md".
+	 * @relative A path relative to the project root, for example "CHANGELOG.md".
 	 */
 	string function repoPath( required string relative ){
 		return variables.root & "/" & arguments.relative;
@@ -332,7 +332,7 @@ component {
 			"templateVersion" : "1.0.0",
 			"projectType"     : "module",
 			"branch"          : "main",
-			"changelog"       : "changelog.md",
+			"changelog"       : "CHANGELOG.md",
 			// Empty means "work it out": box.json's testbox.runner, or the fallback below.
 			"testRunner"      : "",
 			"runTests"        : true,
@@ -497,7 +497,7 @@ component {
 			throw( type = "BuildConfig", message = "build.json branch cannot be empty. Use the branch you release from, for example ""main""." );
 		}
 		if ( !len( trim( s.changelog ) ) ) {
-			throw( type = "BuildConfig", message = "build.json changelog cannot be empty. Name your changelog file, for example ""changelog.md""." );
+			throw( type = "BuildConfig", message = "build.json changelog cannot be empty. Name your changelog file, for example ""CHANGELOG.md""." );
 		}
 		if ( !isBoolean( s.runTests ) ) {
 			throw( type = "BuildConfig", message = "build.json runTests must be true or false." );

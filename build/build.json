@@ -2,7 +2,7 @@
     "templateVersion":"1.0.0",
     "projectType":"module",
     "branch":"main",
-    "changelog":"changelog.md",
+    "changelog":"CHANGELOG.md",
     "testRunner":"",
     "runTests":true,
     "publish":{

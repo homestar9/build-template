@@ -53,7 +53,7 @@ have them. It never overwrites anything you already have.
 ```
 your-project/
 ├── box.json              <- scripts added, nothing else touched
-├── changelog.md          <- created if missing
+├── CHANGELOG.md          <- created if missing
 ├── RELEASE.md            <- the routine, written down
 └── build/
     ├── build.json        <- THE ONLY FILE YOU EDIT
@@ -108,7 +108,7 @@ only `{}` works.
 | --- | --- | --- |
 | `projectType` | `"module"` | `"module"` publishes to ForgeBox. `"app"` builds a zip and does not. |
 | `branch` | `"main"` | The branch releases come from. A release refuses to run from any other. |
-| `changelog` | `"changelog.md"` | Your changelog file name. |
+| `changelog` | `"CHANGELOG.md"` | Your changelog file name. Must match the case on disk, since Linux is case-sensitive. |
 | `testRunner` | from `box.json` | The TestBox runner URL. Taken from your `testbox.runner` when blank. |
 | `runTests` | `true` | Whether the build runs the suite. Set false if only CI runs tests. |
 | `gitSync` | `true` | Whether the release checks out and pulls the branch first. |
@@ -205,6 +205,15 @@ ForgeBox publishing is off unless you switch it on.
 ```json
 { "branch": "production" }
 ```
+
+### Your release notes are required
+
+If `[Unreleased]` is empty when you run a `bump:` command, nothing happens at all: no version
+change and no changelog change. The dated section becomes your GitHub Release body, so an empty
+one would ship a release nobody can interpret.
+
+Write a line first, even just `- Maintenance release`. The check runs before anything is
+written, so a refused bump never leaves the version raised and the notes stale.
 
 ### Ship alphas and betas
 

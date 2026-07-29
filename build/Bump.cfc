@@ -89,7 +89,7 @@ component {
 		print
 			.line()
 			.boldMagentaLine( "Now at #newVersion#. Next steps:" )
-			.line( "  1. Check the change:  git diff box.json #variables.s.changelog#" )
+			.line( "  1. Check the change:  git diff box.json ""#variables.s.changelog#""" )
 			.line( "  2. Commit:            git commit -am ""Release #newVersion#""" )
 			.line( "  3. Check readiness:   box run-script release:check" )
 			.line( "  4. Release:           box run-script release" )

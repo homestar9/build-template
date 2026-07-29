@@ -43,6 +43,13 @@ box run-script bump:major     # breaking changes    1.0.0 -> 2.0.0
 This raises the version in box.json and moves your `[Unreleased]` notes into a dated section.
 It does not commit anything.
 
+Add `:dryRun=true` to any of these to see what would change without writing anything.
+
+**Your notes are required.** If `[Unreleased]` is empty, nothing happens at all: no version
+change and no changelog change. The dated section becomes your release notes on GitHub, so an
+empty one would ship a release nobody can interpret. Write a line first, even just
+`- Maintenance release`.
+
 **Releasing 1.0.0 for the first time?** box.json probably already says 1.0.0, and raising it
 would skip that number. Date the notes without changing the version:
 
@@ -50,10 +57,46 @@ would skip that number. Date the notes without changing the version:
 box task run taskFile=build/Bump.cfc :level=none
 ```
 
+#### Alphas and betas
+
+Version numbers follow SemVer, where `1.2.0-beta.3` comes **before** `1.2.0`. These commands
+follow the same rule, so finishing a beta lands on the version it was leading up to rather than
+stepping past it.
+
+```
+box run-script bump:beta          # start one:  1.1.0 -> 1.2.0-beta.1
+box run-script bump:alpha         # the same, labelled alpha
+box run-script bump:prerelease    # step it on: 1.2.0-beta.1 -> 1.2.0-beta.2
+box run-script bump:patch         # finish it:  1.2.0-beta.2 -> 1.2.0
+```
+
+`bump:beta` and `bump:alpha` start a prerelease of the next **minor** version. For a prerelease
+of the next patch or major instead, name the level yourself:
+
+```
+box task run taskFile=build/Bump.cfc :level=prepatch     # 1.1.0 -> 1.1.1-beta.1
+box task run taskFile=build/Bump.cfc :level=preminor     # 1.1.0 -> 1.2.0-beta.1
+box task run taskFile=build/Bump.cfc :level=premajor     # 1.1.0 -> 2.0.0-beta.1
+```
+
+Add `:preid=rc` to use a different label. Switching label restarts the count, so
+`1.2.0-alpha.7` with `:preid=beta` becomes `1.2.0-beta.1`.
+
+A prerelease is flagged as one on GitHub automatically, because the version contains a hyphen.
+
+Every level, for reference:
+
+| Level | What it does |
+| --- | --- |
+| `patch`, `minor`, `major` | Raise the version. On a prerelease, settle on the version it was leading up to. |
+| `prerelease` | Step an existing prerelease forward, `beta.3` to `beta.4`. |
+| `prepatch`, `preminor`, `premajor` | Start a prerelease. Uses `:preid=beta` unless you say otherwise. |
+| `none` | Keep the version and just date the changelog. |
+
 ### 4. Check and commit
 
 ```
-git diff box.json changelog.md
+git diff
 git commit -am "Release 1.0.1"
 git push origin main
 ```
@@ -107,4 +150,6 @@ box task run taskFile=build/Release.cfc target=github :version=1.0.1
 | `Could not find the GitHub CLI` | Install it, then **open a new terminal**. A terminal keeps the PATH it started with. |
 | `Permission denied (publickey)` | git cannot sign in to your remote. Add your SSH key on GitHub, or switch the remote to HTTPS. |
 | `has no "## [1.0.1]" section` | Run a `bump:` command to move your notes into a dated section. |
+| `The "## [Unreleased]" section is empty` | Write your release notes first. Nothing was changed. |
+| `is not a prerelease, so there is nothing to step forward` | Use `bump:beta` to start one, not `bump:prerelease`. |
 | `Tag v1.0.1 already exists` | That version is already released. Raise the version. |
