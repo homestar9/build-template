@@ -1,0 +1,14 @@
+{
+    "templateVersion":"1.0.0",
+    "projectType":"module",
+    "branch":"main",
+    "changelog":"changelog.md",
+    "testRunner":"",
+    "runTests":true,
+    "publish":{
+        "forgebox":true,
+        "github":true
+    },
+    "excludesAdd":[],
+    "engines":[]
+}

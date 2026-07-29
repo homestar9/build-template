@@ -1,0 +1,24 @@
+{
+    "name":"build-template",
+    "version":"1.0.0",
+    "author":"Angry Sam Productions, Inc.",
+    "location":"ForgeboxStorage",
+    "slug":"build-template",
+    "type":"commandbox-modules",
+    "keywords":"build,release,commandbox,forgebox,coldbox,cfml,publish,changelog,semver",
+    "homepage":"https://github.com/homestar9/build-template",
+    "documentation":"https://github.com/homestar9/build-template",
+    "repository":{
+        "type":"git",
+        "url":"https://github.com/homestar9/build-template/"
+    },
+    "bugs":"https://github.com/homestar9/build-template/issues",
+    "shortDescription":"A drop-in build and release kit for CFML projects: test, bump, build, publish to ForgeBox, tag, and create a GitHub Release with one command each.",
+    "contributors":[],
+    "ignore":[
+        "**/.*",
+        "/test/",
+        "/AGENTS.md",
+        "/CLAUDE.md"
+    ]
+}
