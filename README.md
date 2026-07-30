@@ -1,358 +1,266 @@
 # build-template
 
-A drop-in build and release kit for CFML projects using [CommandBox](https://www.ortussolutions.com/products/commandbox).
+`build-template` is a set of [CommandBox](https://www.ortussolutions.com/products/commandbox)
+tasks for CFML projects. Copy the `build` folder into a project and it can:
 
-Copy one folder into your project and you get three commands:
+- run your TestBox tests;
+- build and check a release zip; and
+- publish the package to ForgeBox and GitHub.
 
+You control the build through `build/build.json`. You should not need to edit the CFML task
+files.
+
+## How a release works
+
+The normal release process has four parts:
+
+1. Write a short description of your changes under `[Unreleased]` in `CHANGELOG.md`.
+2. Run a `bump` command to update the version and date those notes.
+3. Check the project and rehearse the release.
+4. Run the real release.
+
+The release task stops if it finds a problem, such as uncommitted changes, a missing changelog
+entry, failed tests, or a version that has already been released.
+
+## Before you install
+
+Every project needs:
+
+- [CommandBox](https://www.ortussolutions.com/products/commandbox)
+- [Git](https://git-scm.com/)
+- a `box.json` file
+
+Depending on how your project is configured, you may also need:
+
+- [GitHub CLI](https://cli.github.com/) for GitHub Releases;
+- a ForgeBox account for ForgeBox publishing; and
+- a running test server when `runTests` is `true`.
+
+Sign in to the services you use:
+
+```bash
+gh auth login
+box forgebox login
 ```
-box run-script test:engines    # run the whole test suite on every engine
-box run-script bump:patch      # raise the version and date the changelog
-box run-script release         # build, publish, tag, and create a GitHub Release
-```
-
-It works for ForgeBox modules, GitHub-only releases, and plain apps. Everything a project
-needs to change lives in one small settings file, so you never edit the code.
-
----
-
-## What it does for you
-
-- **Refuses to release when something is wrong.** Uncommitted work, wrong branch, a version
-  already released, missing release notes, or a tool that is not signed in all stop the release
-  *before* anything is published.
-- **Never publishes untested code.** The test suite runs during the build and stops it on any
-  failure.
-- **Checks the package is complete.** It counts the files it staged against the files in the
-  zip and stops if they differ. This catches an ignore rule quietly dropping source folders,
-  which is the kind of mistake that ships a broken package and breaks every install.
-- **Writes your release notes for you.** The changelog section for the version becomes the
-  GitHub Release body.
-- **Tells you how to finish by hand** if something fails after publishing, because a published
-  version cannot be taken back.
-
----
 
 ## Install
 
-### From GitHub
-
 1. Download or clone this repository.
-2. Copy its **`build`** folder into the root of your project.
-3. From your project root, run:
+2. Copy the `build` folder into the root of your CFML project.
+3. Open a terminal in your project root and run:
 
-```
+```bash
 box task run taskFile=build/Install.cfc
 ```
 
-That one command works out sensible settings from your project, writes `build/build.json`,
-adds the scripts to your `box.json`, and creates a changelog and a `RELEASE.md` if you do not
-have them. It never overwrites anything you already have.
+The installer:
 
-### What it looks like afterwards
+- creates `build/build.json`;
+- adds build and release scripts to `box.json`;
+- creates `CHANGELOG.md` if the project does not have one; and
+- copies a detailed `RELEASE.md` guide into the project root.
 
-```
-your-project/
-├── box.json              <- scripts added, nothing else touched
-├── CHANGELOG.md          <- created if missing
-├── RELEASE.md            <- the routine, written down
-└── build/
-    ├── build.json        <- THE ONLY FILE YOU EDIT
-    ├── BuildConfig.cfc
-    ├── Build.cfc
-    ├── Bump.cfc
-    ├── Doctor.cfc
-    ├── Install.cfc
-    ├── Release.cfc
-    ├── TestEngines.cfc
-    └── templates/
-```
+It leaves existing files and scripts alone. After installation, review `build/build.json` and
+correct anything the installer could not detect, especially the test runner URL and release
+branch.
 
----
+## Your first release
 
-## Quick start
+This example assumes the current version is `1.0.0` and you are releasing `1.0.1`.
 
-```
-box run-script release:check     # is everything ready? fix whatever it lists
-box run-script release:dryrun    # full rehearsal, publishes nothing
-box run-script release           # the real thing
+### 1. Write the release notes
+
+Add a useful line under `## [Unreleased]` in `CHANGELOG.md`:
+
+```markdown
+## [Unreleased]
+
+### Fixed
+
+- Fixed the login form validation.
 ```
 
-`release:check` is worth running first. It checks git, your remote, the GitHub CLI, ForgeBox,
-your changelog, and your test server, and prints the exact command to fix anything that is
-wrong.
+These notes become the body of the GitHub Release.
 
----
+### 2. Update the version
 
-## The commands
+For a bug fix, run:
 
-| Command | What it does |
+```bash
+box run-script bump:patch
+```
+
+This changes the version in `box.json` from `1.0.0` to `1.0.1` and moves the notes into a
+dated `1.0.1` section.
+
+Use a different command when needed:
+
+```bash
+box run-script bump:minor    # 1.0.0 -> 1.1.0 for a new feature
+box run-script bump:major    # 1.0.0 -> 2.0.0 for a breaking change
+```
+
+### 3. Review and commit the changes
+
+```bash
+git diff
+git add box.json CHANGELOG.md
+git commit -m "Release 1.0.1"
+```
+
+If your changelog has a different filename, use that filename in the `git add` command.
+
+### 4. Check that the project is ready
+
+Start the project's test server if tests are enabled, then run:
+
+```bash
+box run-script release:check
+```
+
+This command changes nothing. It checks the settings, Git repository, changelog, required
+tools, service logins, and test server. If something is wrong, it prints what to fix.
+
+### 5. Rehearse the release
+
+```bash
+box run-script release:dryrun
+```
+
+The dry run executes the checks, tests, and package build, but does not publish, tag, or push
+anything.
+
+### 6. Publish
+
+```bash
+box run-script release
+```
+
+The release task:
+
+1. checks the project;
+2. updates the release branch from its Git remote;
+3. runs the tests and builds a verified zip;
+4. publishes to ForgeBox when enabled; and
+5. creates the Git tag and GitHub Release when enabled.
+
+The finished zip and checksum are saved under `.artifacts/`.
+
+## Common commands
+
+| Command | Use it to |
 | --- | --- |
-| `release` | The whole release: check, sync, build, publish, tag, GitHub Release. |
-| `release:check` | Checks whether you are ready to release. Changes nothing. |
-| `release:dryrun` | Everything except publishing, tagging, and pushing. Prints what it would do. |
-| `release:hotfix` | Same as `release` but skips the test suite. Warns loudly. |
-| `test:engines` | Runs the whole suite on every engine in turn. |
-| `bump:patch` / `bump:minor` / `bump:major` | Raises the version and moves your `[Unreleased]` notes into a dated section. |
-| `bump:beta` / `bump:alpha` | Starts a prerelease of the next minor version, `1.1.0` → `1.2.0-beta.1`. |
-| `bump:prerelease` | Steps an existing prerelease forward, `beta.3` → `beta.4`. |
-| `build:package` | Builds and checks the zip without publishing anything. |
+| `box run-script release:check` | Find anything that would stop a release. |
+| `box run-script release:dryrun` | Rehearse a release without publishing. |
+| `box run-script release` | Build and publish the current version. |
+| `box run-script bump:patch` | Release a backward-compatible bug fix. |
+| `box run-script bump:minor` | Release a backward-compatible feature. |
+| `box run-script bump:major` | Release a breaking change. |
+| `box run-script test:engines` | Run the test suite on each configured CFML engine. |
+| `box run-script build:package` | Build and check the zip without publishing it. |
 
----
+The generated `RELEASE.md` explains prereleases, hotfixes, and recovery from a release that
+stops partway through.
 
-## Settings: `build/build.json`
+## Common settings
 
-Every setting is optional. Anything you leave out uses the default below, so a file containing
-only `{}` works.
+Edit `build/build.json` to change how the tasks work. The installer creates this file with
+values detected from your project, so add or change only the settings you need.
 
-| Setting | Default | What it does |
-| --- | --- | --- |
-| `projectType` | `"module"` | `"module"` publishes to ForgeBox. `"app"` builds a zip and does not. |
-| `branch` | `"main"` | The branch releases come from. A release refuses to run from any other. |
-| `changelog` | `"CHANGELOG.md"` | Your changelog file name. Must match the case on disk, since Linux is case-sensitive. |
-| `testRunner` | from `box.json` | The TestBox runner URL. Taken from your `testbox.runner` when blank. |
-| `runTests` | `true` | Whether the build runs the suite. Set false if only CI runs tests. |
-| `gitSync` | `true` | Whether the release checks out and pulls the branch first. |
-| `requireCleanTree` | `true` | Whether uncommitted work stops a release. |
-| `publish.forgebox` | `true` | Publish to ForgeBox. Off by default when `projectType` is `"app"`. |
-| `publish.github` | `true` | Tag the version and create a GitHub Release. |
-| `excludesAdd` | `[]` | Extra things to keep out of the package. **This is the one you will use.** |
-| `excludes` | see below | Replaces the whole default exclude list. For unusual cases only. |
-| `engines` | `[]` | The engines `test:engines` runs, in order. |
-| `warmup.attempts` | `60` | How many times to check whether a starting server is up. |
-| `warmup.delaySeconds` | `5` | How long to wait between those checks. |
-| `coldboxMapping` | `"test-harness/coldbox"` | Where ColdBox lives, if your build needs it mapped. |
-| `stagingDir` | `".tmp"` | Where the package is assembled. |
-| `artifactsDir` | `".artifacts"` | Where the finished zip and checksums go. |
-| `tagPrefix` | `"v"` | The prefix for version tags, giving `v1.2.3`. |
-
-### What is excluded by default
-
-The build folder, `modules`, `node_modules`, `test-harness`, `tests`, `test-results`, `temp`,
-`plans`, any `server-*.json`, `AGENTS.md`, `CLAUDE.md`, `DEVNOTES.md`, `RELEASE.md`, `.bak`
-files, any archive (`.zip`, `.tar`, and friends), and every hidden file or folder such as
-`.git` and `.env`.
-
-Each entry is a regular expression matched against the name of each **top-level** item. Only
-the top level is checked, and a folder that survives is copied whole.
-
----
-
-## Customising
-
-### Keep one extra file out of the package
-
-The most common change. Say you have a logo in your project root that users do not need:
+### Publish to GitHub but not ForgeBox
 
 ```json
 {
-    "excludesAdd": [ "my-logo\\.avif$" ]
+    "publish": {
+        "forgebox": false,
+        "github": true
+    }
 }
 ```
 
-Backslashes must be doubled in JSON. `\\.` means a literal dot.
+### Build an application instead of a module
 
-To exclude a whole top-level folder:
+An application still gets a versioned zip and can still get a GitHub Release:
 
 ```json
 {
-    "excludesAdd": [ "^[\\/]?docs$" ]
+    "projectType": "app",
+    "publish": {
+        "forgebox": false,
+        "github": true
+    }
 }
 ```
 
-### Skip the test suite
+### Do not run tests during the build
 
-Three ways, depending on what you want:
-
-```json
-{ "runTests": false }
-```
-
-turns it off for every build. For a one-off, when you have just run the tests yourself:
-
-```
-box run-script release:hotfix
-```
-
-Both print a loud warning, because an untested release is worth noticing.
-
-### Release to GitHub only, not ForgeBox
+Use this when another system, such as CI, is responsible for running the tests:
 
 ```json
 {
-    "publish": { "forgebox": false, "github": true }
+    "runTests": false
 }
 ```
 
-### Publish a private ForgeBox package
+### Keep extra files out of the package
 
-Nothing changes here. Mark the package private in your own `box.json`:
-
-```json
-{ "private": true }
-```
-
-### Build an app rather than a module
-
-```json
-{ "projectType": "app" }
-```
-
-You still get a checked, versioned zip in `.artifacts/`, plus tagging and a GitHub Release.
-ForgeBox publishing is off unless you switch it on.
-
-### Release from a branch other than `main`
-
-```json
-{ "branch": "production" }
-```
-
-### Your release notes are required
-
-If `[Unreleased]` is empty when you run a `bump:` command, nothing happens at all: no version
-change and no changelog change. The dated section becomes your GitHub Release body, so an empty
-one would ship a release nobody can interpret.
-
-Write a line first, even just `- Maintenance release`. The check runs before anything is
-written, so a refused bump never leaves the version raised and the notes stale.
-
-### Ship alphas and betas
-
-Version numbers follow SemVer, where `1.2.0-beta.3` comes **before** `1.2.0`. The commands
-follow the same rule, so finishing a beta lands on the version it was leading up to instead of
-stepping past it.
-
-Start a prerelease of the next minor version:
-
-```
-box run-script bump:beta      # 1.1.0 -> 1.2.0-beta.1
-box run-script bump:alpha     # 1.1.0 -> 1.2.0-alpha.1
-```
-
-Step it forward as you go:
-
-```
-box run-script bump:prerelease    # 1.2.0-beta.1 -> 1.2.0-beta.2
-```
-
-Then release it for real. `patch` settles on the version the beta was for, rather than skipping
-to `1.2.1`:
-
-```
-box run-script bump:patch     # 1.2.0-beta.2 -> 1.2.0
-```
-
-For a prerelease of a patch or a major instead of a minor, name the level directly:
-
-```
-box task run taskFile=build/Bump.cfc :level=prepatch     # 1.1.0 -> 1.1.1-beta.1
-box task run taskFile=build/Bump.cfc :level=premajor     # 1.1.0 -> 2.0.0-beta.1
-```
-
-Add `:preid=rc` to any of those to use a different label. Switching label restarts the count, so
-`1.2.0-alpha.7` with `:preid=beta` becomes `1.2.0-beta.1`.
-
-GitHub Releases for a prerelease are flagged as such automatically, because the version contains
-a hyphen.
-
-### Add engines to the test sweep
+`excludesAdd` contains regular expressions matched against top-level files and folders. For
+example, this keeps the top-level `docs` folder out of the package:
 
 ```json
 {
-    "engines": [
-        { "name": "Lucee 5",    "configFile": "server-lucee@5.json" },
-        { "name": "Adobe 2023", "configFile": "server-adobe@2023.json" }
+    "excludesAdd": [
+        "^docs$"
     ]
 }
 ```
 
-Put the engines you trust first. The sweep stops at the first failure, so a problem with a
-rarely used engine still leaves you results for the others.
+Use double backslashes when a regular expression needs a backslash because the value is JSON.
 
----
+### Test more than one CFML engine
 
-## How a release runs
+Each `configFile` is a CommandBox server JSON file in the project root:
 
-`box run-script release` does this, stopping at the first problem:
+```json
+{
+    "engines": [
+        {
+            "name": "Lucee 5",
+            "configFile": "server-lucee@5.json"
+        },
+        {
+            "name": "Adobe 2023",
+            "configFile": "server-adobe@2023.json"
+        }
+    ]
+}
+```
 
-1. **Checks** — clean checkout, right branch, version not already released, changelog section
-   exists, GitHub CLI signed in. All of this happens before anything permanent.
-2. **Lines up with the remote** — checks out the release branch and pulls.
-3. **Builds** — runs the suite, stages the source minus exclusions, stamps the version, zips
-   it, counts the files, writes checksums.
-4. **Publishes to ForgeBox** — from the built folder, never the project root.
-5. **Tags and releases on GitHub** — with the changelog notes and the zip attached.
+Run the configured list with:
 
-**Why publish from the built folder?** Publishing from your project root packages using
-`.gitignore`, and one broad ignore rule can quietly drop source folders from what people
-install. Publishing what the build produced sends exactly what the build checked.
+```bash
+box run-script test:engines
+```
 
----
+The engines run one at a time and the command stops at the first failure.
 
-## When something goes wrong
+## Common problems
 
-| Message | What it means and what to do |
+| Message | What to do |
 | --- | --- |
-| `You have uncommitted changes` | Commit or stash first. The release refuses so that the forced checkout cannot throw work away. |
-| `No answer from the test server` | Start your server, or set `runTests` to false. |
-| `Could not find the GitHub CLI` | Install it from [cli.github.com](https://cli.github.com), then **open a new terminal**. A terminal keeps the PATH it started with, so a tool installed afterwards looks missing until you open a new one. |
-| `The GitHub CLI is not signed in` | Run `gh auth login`. |
-| `Permission denied (publickey)` | git cannot sign in to your remote. Add your SSH key at [github.com/settings/ssh/new](https://github.com/settings/ssh/new), or switch to HTTPS: `git remote set-url origin https://github.com/<you>/<repo>.git` then `gh auth setup-git`. |
-| `has no "## [1.2.3]" section` | Run a `bump:` command to move your notes into a dated section. |
-| `Tag v1.2.3 already exists` | That version is released. Raise the version first. |
-| `The zip is incomplete` | Something is removing files during packaging. Check `.gitignore` and your `excludes`. |
-| `build.json is not valid JSON` | Usually an unquoted value or a single backslash. Backslashes must be doubled. |
+| `You have uncommitted changes` | Commit or stash the changes, then run the command again. |
+| `No answer from the test server` | Start the project's test server, check `testRunner`, or turn off `runTests` if tests run elsewhere. |
+| `Could not find the GitHub CLI` | Install `gh`, open a new terminal, and run `gh auth login`. |
+| `has no "## [version]" section` | Add notes under `[Unreleased]`, then run the correct `bump` command. |
+| `Tag v1.2.3 already exists` | That version has already been released. Bump the version before trying again. |
+| `build.json is not valid JSON` | Check for missing quotes, trailing commas, or backslashes that need to be doubled. |
 
-### A release that stopped halfway
+Start with `box run-script release:check` when you are unsure. It reports all readiness
+problems without changing the project.
 
-Everything that can stop a release happens before publishing. If a step fails **after**
-publishing, do not run the release again: the version is already out, so the checks will
-refuse. The failure message prints the exact commands to finish by hand.
+## More information
 
-To finish just the tag and GitHub Release:
-
-```
-box task run taskFile=build/Release.cfc target=github :version=1.2.3
-```
-
-To see the release notes without doing anything:
-
-```
-box task run taskFile=build/Release.cfc target=github :version=1.2.3 :notesOnly=true
-```
-
----
-
-## Releasing from CI
-
-`build/templates/github-release.yml` is a GitHub Actions workflow you can copy to
-`.github/workflows/release.yml`. It builds and publishes when you push a version tag, and
-stamps packages with the Actions run number instead of the commit hash.
-
----
-
-## Updating this kit
-
-Settings live in `build/build.json` and the code never needs editing, so updating is:
-
-1. Replace the `.cfc` files in your `build` folder with the new ones.
-2. Leave your `build.json` alone.
-
-`templateVersion` in `build.json` records which version you set up with.
-
----
-
-## Requirements
-
-- CommandBox
-- git
-- The GitHub CLI (`gh`), only if you publish GitHub Releases
-- A ForgeBox account, only if you publish there
-
-Build tasks run inside CommandBox's own engine, so they work the same whichever CF engine your
-project targets.
-
----
-
-## Licence
-
-MIT. See [LICENSE](LICENSE).
+- [Detailed release guide](build/templates/RELEASE.md)
+- [Optional GitHub Actions workflow](build/templates/github-release.yml)
+- [Changelog](CHANGELOG.md)
+- [MIT License](LICENSE)
