@@ -1,7 +1,7 @@
 {
     "templateVersion":"1.0.0",
     "projectType":"module",
-    "branch":"main",
+    "branch":"master",
     "changelog":"CHANGELOG.md",
     "testRunner":"",
     "runTests":true,
