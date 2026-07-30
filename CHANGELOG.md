@@ -7,6 +7,8 @@ and the version numbers follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-29
+
 ### Added
 
 - First version of the build kit: `Build`, `Release`, `Bump`, `TestEngines`, `Install`,
