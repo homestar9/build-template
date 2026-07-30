@@ -61,33 +61,55 @@ component {
 	 * @force Overwrite an existing file.
 	 */
 	private function writeBuildJSON( required boolean force ){
-		var path = variables.buildDir & "build.json";
-		if ( fileExists( path ) && !arguments.force ) {
+		var path          = variables.buildDir & "build.json";
+		var replacingSeed = fileExists( path ) && isInstallerSeed( path );
+		if ( fileExists( path ) && !arguments.force && !replacingSeed ) {
 			print.yellowLine( "  skip  build/build.json already exists (use :force=true to replace it)" ).toConsole();
 			return;
 		}
 
-		var box      = deserializeJSON( fileRead( variables.root & "/box.json" ) );
+		var box         = deserializeJSON( fileRead( variables.root & "/box.json" ) );
+		var projectType = detectProjectType( box );
 		var settings = {
 			"templateVersion" : "1.0.0",
-			"projectType"     : detectProjectType( box ),
+			"projectType"     : projectType,
 			"branch"          : detectBranch(),
 			"changelog"       : detectChangelogName(),
 			"testRunner"      : detectTestRunner( box ),
 			"runTests"        : true,
 			"publish"         : {
-				"forgebox" : detectProjectType( box ) == "module",
+				"forgebox" : projectType == "module",
 				"github"   : true
 			},
+			"excludes"    : defaultExcludes( projectType ),
 			"excludesAdd" : [],
 			"engines"     : detectEngines()
 		};
 
 		fileWrite( path, formatJSON( settings ) );
-		print.greenLine( "  made  build/build.json" ).toConsole();
+		print.greenLine( "  made  build/build.json#( replacingSeed ? " (replaced starter config)" : "" )#" ).toConsole();
 		print.line( "        project type: #settings.projectType#" ).toConsole();
 		print.line( "        test runner:  #settings.testRunner#" ).toConsole();
 		print.line( "        engines:      #arrayLen( settings.engines )# found" ).toConsole();
+	}
+
+	/**
+	 * isInstallerSeed
+	 *
+	 * Reports whether build.json is the starter file shipped with this kit. Only a marked
+	 * starter can be replaced without force; malformed and user-owned files remain untouched.
+	 *
+	 * @path The build.json file to inspect.
+	 */
+	private boolean function isInstallerSeed( required string path ){
+		try {
+			var settings = deserializeJSON( fileRead( arguments.path ) );
+			return isStruct( settings )
+				&& isBoolean( settings._installerSeed ?: false )
+				&& settings._installerSeed;
+		} catch ( any e ) {
+			return false;
+		}
 	}
 
 	/**
@@ -207,6 +229,64 @@ component {
 	}
 
 	/**
+	 * defaultExcludes
+	 *
+	 * Returns the complete starter exclusion list for a new project. The list is written into
+	 * build.json so an installed project keeps the packaging policy it reviewed, even when a
+	 * future version of this kit changes its own defaults.
+	 *
+	 * Module packages omit their development toolchain and every hidden item. Applications
+	 * keep files that may be part of a deployment, including modules, resources, package
+	 * manifests, .htaccess, and .well-known.
+	 *
+	 * @projectType Either module or app.
+	 */
+	private array function defaultExcludes( required string projectType ){
+		var common = [
+			"^build$",
+			"^node_modules$",
+			"^test-harness$",
+			"^tests$",
+			"^test-results$",
+			"^temp$",
+			"^server(?:-.*)?\.json$",
+			"^.*\.code-workspace$",
+			"^(AGENTS|CLAUDE|DEVNOTES|RELEASE)\.md$",
+			"\.bak$",
+			"\.(zip|tar|tar\.gz|tgz|7z|rar)$"
+		];
+
+		if ( arguments.projectType == "module" ) {
+			return [
+				"^build$",
+				"^modules$",
+				"^node_modules$",
+				"^resources$",
+				"^test-harness$",
+				"^tests$",
+				"^test-results$",
+				"^temp$",
+				"^plans$",
+				"^(package|package-lock)\.json$",
+				"^webpack\.config\.js$",
+				"^(vite|vitest)\.config\.js$",
+				"^docker-compose\.yml$",
+				"^server(?:-.*)?\.json$",
+				"^.*\.code-workspace$",
+				"^(AGENTS|CLAUDE|DEVNOTES|RELEASE)\.md$",
+				"\.bak$",
+				"\.(zip|tar|tar\.gz|tgz|7z|rar)$",
+				"^\..*"
+			];
+		}
+
+		// Applications may need these two hidden paths at runtime. Everything else hidden is
+		// treated as local tooling or potentially sensitive configuration.
+		common.append( "^\.(?!(?:htaccess|well-known)$).*" );
+		return common;
+	}
+
+	/**
 	 * detectBranch
 	 *
 	 * Reads the current branch from .git/HEAD, falling back to main.
@@ -274,7 +354,11 @@ component {
 	 */
 	private array function detectEngines(){
 		var engines = [];
-		var files   = directoryList( variables.root, false, "name", "server-*.json" );
+		var files   = directoryList( variables.root, false, "name", "*.json" )
+			.filter( function( file ){
+				return reFindNoCase( "^server(?:-.*)?\.json$", file );
+			} );
+		files.sort( "textnocase" );
 
 		for ( var file in files ) {
 			engines.append( { "name" : engineName( file ), "configFile" : file } );
@@ -285,13 +369,52 @@ component {
 	/**
 	 * engineName
 	 *
-	 * Turns a file name such as server-lucee@5.json into a readable name such as Lucee 5.
+	 * Prefers app.cfengine from the server file, then its name, then a readable version of the
+	 * filename. A malformed file is still included so installation never silently loses a
+	 * server the user expected to test.
 	 *
 	 * @file The server json file name.
 	 */
 	private string function engineName( required string file ){
-		var name = reReplaceNoCase( arguments.file, "^server-", "" );
+		try {
+			var serverSettings = deserializeJSON( fileRead( variables.root & "/" & arguments.file ) );
+			if ( isStruct( serverSettings ) ) {
+				var cfengine = "";
+				if (
+					structKeyExists( serverSettings, "app" )
+					&& isStruct( serverSettings.app )
+					&& structKeyExists( serverSettings.app, "cfengine" )
+				) {
+					cfengine = serverSettings.app.cfengine;
+				}
+				if ( isSimpleValue( cfengine ) && len( trim( cfengine ) ) ) {
+					return readableEngineName( trim( cfengine ) );
+				}
+
+				var serverName = structKeyExists( serverSettings, "name" ) ? serverSettings.name : "";
+				if ( isSimpleValue( serverName ) && len( trim( serverName ) ) ) {
+					return trim( serverName );
+				}
+			}
+		} catch ( any e ) {
+			// The server command owns validation. Keep the file in the generated list and give
+			// it a useful fallback name so the later error identifies the right configuration.
+		}
+
+		var name = reReplaceNoCase( arguments.file, "^server-?", "" );
 		name     = reReplaceNoCase( name, "\.json$", "" );
+		return len( trim( name ) ) ? readableEngineName( name ) : "Server";
+	}
+
+	/**
+	 * readableEngineName
+	 *
+	 * Turns a value such as lucee@5 or boxlang-cfml@1 into Lucee 5 or Boxlang 1.
+	 *
+	 * @value A CommandBox engine ID or filename stem.
+	 */
+	private string function readableEngineName( required string value ){
+		var name = arguments.value;
 		// Drop the word that only says which language flavour it runs, so
 		// server-boxlang-cfml@1.json reads as "Boxlang 1" rather than "Boxlang Cfml 1".
 		name     = reReplaceNoCase( name, "[-_]cfml\b", "" );

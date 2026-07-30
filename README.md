@@ -55,14 +55,15 @@ box task run taskFile=build/Install.cfc
 
 The installer:
 
-- creates `build/build.json`;
+- replaces the marked starter `build/build.json` with settings detected from your project;
 - adds build and release scripts to `box.json`;
 - creates `CHANGELOG.md` if the project does not have one; and
 - copies a detailed `RELEASE.md` guide into the project root.
 
-It leaves existing files and scripts alone. After installation, review `build/build.json` and
-correct anything the installer could not detect, especially the test runner URL and release
-branch.
+The starter marker only exists in the file shipped with this kit. The installer leaves every
+unmarked `build.json` and existing script alone, so rerunning it is safe. After installation,
+review `build/build.json` and correct anything the installer could not detect, especially the
+test runner URL and release branch.
 
 ## Your first release
 
@@ -165,7 +166,8 @@ stops partway through.
 ## Common settings
 
 Edit `build/build.json` to change how the tasks work. The installer creates this file with
-values detected from your project, so add or change only the settings you need.
+values detected from your project and a complete package exclusion list. Keeping that list in
+the project makes its package contents predictable when the build kit is upgraded later.
 
 ### Publish to GitHub but not ForgeBox
 
@@ -204,8 +206,15 @@ Use this when another system, such as CI, is responsible for running the tests:
 
 ### Keep extra files out of the package
 
-`excludesAdd` contains regular expressions matched against top-level files and folders. For
-example, this keeps the top-level `docs` folder out of the package:
+`excludes` is the complete list of regular expressions matched against top-level files and
+folders. A module starts with broad packaging defaults: build and test tooling, downloaded
+dependencies, server definitions, editor workspaces, agent notes, archives, and hidden files
+stay out. An application gets a narrower list: possible deployment content such as `modules`,
+`resources`, package manifests, `.htaccess`, and `.well-known` remains available.
+
+Edit `excludes` when you need to change that baseline. Use `excludesAdd` for project-specific
+additions that should sit on top of it. For example, this keeps the top-level `docs` folder out
+of the package:
 
 ```json
 {
@@ -219,7 +228,12 @@ Use double backslashes when a regular expression needs a backslash because the v
 
 ### Test more than one CFML engine
 
-Each `configFile` is a CommandBox server JSON file in the project root:
+During installation, `server.json` and every `server-*.json` file in the project root are
+added here in filename order. Nested server files are deliberately ignored. A readable name
+comes from `app.cfengine`, then the server's `name`, then its filename; review the generated
+list and remove any server that is not part of your compatibility suite.
+
+Each `configFile` remains a CommandBox server JSON file in the project root:
 
 ```json
 {

@@ -7,6 +7,20 @@ and the version numbers follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
+### Added
+
+- New installations write complete, project-specific exclusion defaults into
+  `build/build.json`. Module packages get the broad ColdBox-style development exclusions;
+  applications preserve deployment content such as `modules`, `.htaccess`, and `.well-known`.
+- Installation discovers both `server.json` and root-level `server-*.json` files in stable
+  filename order, naming them from `app.cfengine`, the server name, or the filename.
+
+### Changed
+
+- The shipped `build.json` is now a marked starter that a fresh install replaces
+  automatically. Existing unmarked and malformed configurations remain untouched unless
+  installation is run with `:force=true`.
+
 ## [1.0.0] - 2026-07-29
 
 ### Added
