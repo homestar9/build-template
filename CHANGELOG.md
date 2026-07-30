@@ -7,6 +7,8 @@ and the version numbers follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-30
+
 ### Added
 
 - New installations write complete, project-specific exclusion defaults into
