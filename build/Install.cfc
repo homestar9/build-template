@@ -88,9 +88,10 @@ component {
 
 		fileWrite( path, formatJSON( settings ) );
 		print.greenLine( "  made  build/build.json#( replacingSeed ? " (replaced starter config)" : "" )#" ).toConsole();
-		print.line( "        project type: #settings.projectType#" ).toConsole();
-		print.line( "        test runner:  #settings.testRunner#" ).toConsole();
-		print.line( "        engines:      #arrayLen( settings.engines )# found" ).toConsole();
+		print.line( "        project type:   #settings.projectType#" ).toConsole();
+		print.line( "        release branch: #settings.branch#" ).toConsole();
+		print.line( "        test runner:    #settings.testRunner#" ).toConsole();
+		print.line( "        engines:        #arrayLen( settings.engines )# found" ).toConsole();
 	}
 
 	/**
@@ -130,6 +131,7 @@ component {
 			"release"         : "task run taskFile=build/Release.cfc target=run :version=`package show version`",
 			"release:check"   : "task run taskFile=build/Doctor.cfc",
 			"release:dryrun"  : "task run taskFile=build/Release.cfc target=run :version=`package show version` :dryRun=true",
+			"release:skip-tests" : "task run taskFile=build/Release.cfc target=run :version=`package show version` :skipTests=true",
 			"release:hotfix"  : "task run taskFile=build/Release.cfc target=run :version=`package show version` :skipTests=true",
 			"test:engines"    : "task run taskFile=build/TestEngines.cfc",
 			"bump:major"      : "task run taskFile=build/Bump.cfc :level=major",
@@ -289,15 +291,24 @@ component {
 	/**
 	 * detectBranch
 	 *
-	 * Reads the current branch from .git/HEAD, falling back to main.
+	 * Uses Gitflow's configured production branch when present. Otherwise reads the current
+	 * symbolic branch through git, which also works in linked worktrees, and falls back to main
+	 * for a detached checkout or a folder without usable git metadata.
 	 */
 	private string function detectBranch(){
-		var headFile = variables.root & "/.git/HEAD";
-		if ( fileExists( headFile ) ) {
-			var head = trim( fileRead( headFile ) );
-			if ( left( head, 16 ) == "ref: refs/heads/" ) {
-				return replace( head, "ref: refs/heads/", "" );
+		try {
+			var config     = new BuildConfig( variables.buildDir );
+			var production = config.execNative( "git", [ "config", "--get", "gitflow.branch.master" ] );
+			if ( production.exitCode == 0 && len( trim( production.output ) ) ) {
+				return trim( production.output );
 			}
+
+			var current = config.execNative( "git", [ "symbolic-ref", "--quiet", "--short", "HEAD" ] );
+			if ( current.exitCode == 0 && len( trim( current.output ) ) ) {
+				return trim( current.output );
+			}
+		} catch ( any ignored ) {
+			// Installation can still produce a useful starter config when git is unavailable.
 		}
 		return "main";
 	}
