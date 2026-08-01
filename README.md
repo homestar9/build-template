@@ -104,12 +104,17 @@ box run-script bump:major    # 1.0.0 -> 2.0.0 for a breaking change
 ### 3. Review and commit the changes
 
 ```bash
+git status
 git diff
 git add box.json CHANGELOG.md
+git diff --staged
 git commit -m "Release 1.0.1"
 ```
 
 If your changelog has a different filename, use that filename in the `git add` command.
+`git status` lists the changed files, `git diff` lets you review them, and `git add` selects
+what the next commit will contain. `git diff --staged` previews that selection. The commit is
+only local until you send it to the remote with `git push`.
 
 ### 4. Check that the project is ready
 
@@ -140,7 +145,7 @@ box run-script release
 The release task:
 
 1. checks the project;
-2. updates the release branch from its Git remote;
+2. fast-forwards the configured production branch from its Git remote;
 3. runs the tests and builds a verified zip;
 4. publishes to ForgeBox when enabled; and
 5. creates the Git tag and GitHub Release when enabled.
@@ -154,20 +159,35 @@ The finished zip and checksum are saved under `.artifacts/`.
 | `box run-script release:check` | Find anything that would stop a release. |
 | `box run-script release:dryrun` | Rehearse a release without publishing. |
 | `box run-script release` | Build and publish the current version. |
+| `box run-script release:skip-tests` | Publish without rerunning tests that were already completed. |
+| `box run-script release:hotfix` | Alias for `release:skip-tests`; it does not manage a Gitflow hotfix branch. |
 | `box run-script bump:patch` | Release a backward-compatible bug fix. |
 | `box run-script bump:minor` | Release a backward-compatible feature. |
 | `box run-script bump:major` | Release a breaking change. |
 | `box run-script test:engines` | Run the test suite on each configured CFML engine. |
 | `box run-script build:package` | Build and check the zip without publishing it. |
 
-The generated `RELEASE.md` explains prereleases, hotfixes, and recovery from a release that
-stops partway through.
+The generated `RELEASE.md` explains Gitflow releases, prereleases, hotfixes, and recovery from
+a release that stops partway through.
 
 ## Common settings
 
 Edit `build/build.json` to change how the tasks work. The installer creates this file with
 values detected from your project and a complete package exclusion list. Keeping that list in
 the project makes its package contents predictable when the build kit is upgraded later.
+
+### Choose the production branch
+
+`branch` is the branch that receives release tags and published versions—normally `main` or
+`master`. In a Gitflow repository it is the production branch, never `develop` or a temporary
+`release/*` branch. The installer reads Gitflow's configured production branch when available,
+but you should still verify the generated value.
+
+```json
+{
+    "branch": "main"
+}
+```
 
 ### Publish to GitHub but not ForgeBox
 

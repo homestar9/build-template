@@ -7,6 +7,23 @@ and the version numbers follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
+### Added
+
+- A Gitflow release cheat sheet covering plain Git, pull-request, `git-flow`, and hotfix paths.
+- Existing-tag release mode for publishing tags created by Gitflow or tag-triggered CI.
+- `release:skip-tests` as the clear name for the existing skip-tests release behavior.
+
+### Changed
+
+- Release dry runs can rehearse non-production branches with a warning, while real releases
+  remain restricted to the configured production branch.
+- Release synchronization is fast-forward-only, and normal releases now reject tags that
+  already exist locally or on the remote.
+- Installation prefers Gitflow's configured production branch, and Git guidance now uses
+  explicit review, staging, and commit steps for newer Git users.
+- The optional GitHub Actions workflow can publish an existing tag and requests only the
+  repository-content permission needed to create the release.
+
 ## [1.1.0] - 2026-07-30
 
 ### Added

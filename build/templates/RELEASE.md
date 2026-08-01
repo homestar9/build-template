@@ -9,6 +9,8 @@ commands below come from the build kit in [build/](build/).
 - **GitHub CLI** signed in, if you publish GitHub Releases: `gh auth login`.
 - **ForgeBox** signed in, if you publish there: `box forgebox login`.
 - A test server you can start, unless `runTests` is off in build.json.
+- `branch` in build/build.json set to the production branch you publish from, normally `main`
+  or `master`. In Gitflow this is never `develop` or `release/*`.
 
 Check all of it at once:
 
@@ -96,10 +98,25 @@ Every level, for reference:
 ### 4. Check and commit
 
 ```
-git diff
-git commit -am "Release 1.0.1"
-git push origin main
+git status
+git diff -- box.json CHANGELOG.md
+git add box.json CHANGELOG.md
+git diff --staged
+git commit -m "Release 1.0.1"
+git push origin <current-branch>
 ```
+
+Replace `CHANGELOG.md`, `1.0.1`, and `<current-branch>` with the values for your project.
+
+- `git status` lists changed and untracked files.
+- `git diff` shows the unstaged version and changelog edits for review.
+- `git add` selects exactly those files for the next commit.
+- `git diff --staged` previews exactly what the commit will contain.
+- `git commit` records that snapshot in your local repository; it does not upload anything.
+- `git push` sends the commit to the named branch on the `origin` remote.
+
+Using explicit `git add` is intentional. `git commit -am` skips untracked files, which can make
+a commit look complete when a new release file was left out.
 
 ### 5. Rehearse (recommended the first few times)
 
@@ -108,7 +125,8 @@ box run-script release:dryrun
 ```
 
 Runs the checks and the full build, then prints exactly what it would publish, tag, and push.
-Nothing leaves your machine.
+Nothing leaves your machine. You can rehearse from a Gitflow `release/*` branch; the command
+warns that the real release must still run from the configured production branch.
 
 ### 6. Release
 
@@ -121,13 +139,91 @@ box run-script release
 That runs the checks, lines up with the remote, runs the tests, builds and verifies the
 package, publishes it, tags the version, and creates the GitHub Release.
 
-## Just built a hotfix and already ran the tests?
+## Gitflow cheat sheet
+
+In Gitflow, `develop` collects features, `release/<version>` prepares a release, and the
+production branch records published releases. A finished release must reach both production
+and `develop`. The build kit's `branch` setting always names production. See Atlassian's
+[Gitflow workflow guide](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow/)
+for the branch model.
+
+### Plain Git or pull requests
+
+This example releases `1.2.0`; substitute your version and production branch name.
+
+1. Start from an up-to-date `develop` branch:
+
+   ```
+   git switch develop
+   git pull --ff-only origin develop
+   git switch -c release/1.2.0
+   ```
+
+2. Write the notes, run the appropriate `bump:` command, and use the explicit review, `add`,
+   and `commit` commands from step 4 above. Push the preparation branch with:
+
+   ```
+   git push -u origin release/1.2.0
+   ```
+
+3. Test and rehearse on the release branch:
+
+   ```
+   box run-script test:engines
+   box run-script release:dryrun
+   ```
+
+4. Merge `release/1.2.0` into both the production branch and `develop`. Use pull requests when
+   your repository requires review. Do not delete the release branch until both merges land.
+
+5. Check out the updated production branch and publish:
+
+   ```
+   git switch main
+   git pull --ff-only origin main
+   box run-script release:check
+   box run-script release
+   ```
+
+6. After the publish succeeds and both merges are present, delete the release branch locally
+   and remotely if your pull-request host did not already do so.
+
+A Gitflow hotfix starts from production instead of `develop`, usually bumps the patch version,
+and is also merged into production and `develop` before publishing with the same final steps.
+
+### Using the `git-flow` extension
+
+The commands below use the extension's
+[documented release `finish` behavior](https://github.com/nvie/gitflow/blob/develop/git-flow-release)
+and its `-n` no-tag option.
+
+Set its version-tag prefix to the build kit's `tagPrefix` once. The default here is `v`:
 
 ```
-box run-script release:hotfix
+git config gitflow.prefix.versiontag v
 ```
 
-Same as `release`, but skips the test suite and says so loudly.
+Choose exactly one of these finish paths so only one tool owns the tag:
+
+- **Publish locally with the build kit:** run `git flow release finish -n 1.2.0` so Gitflow
+  performs both merges without tagging. Push production and `develop`, switch to production,
+  then run `box run-script release`; the build kit creates and pushes `v1.2.0`.
+- **Publish from the tag-triggered GitHub Actions workflow:** run the normal
+  `git flow release finish 1.2.0`, then push production, `develop`, and `v1.2.0`. Gitflow owns
+  the tag and Actions publishes that existing tag without recreating it.
+
+Never run the normal tagging form of `git flow release finish` and then run the local release
+command. Both would try to own the same tag, and the local command correctly refuses.
+
+## Already tested and deliberately skipping the release test run?
+
+```
+box run-script release:skip-tests
+```
+
+Same as `release`, but skips the test suite and says so loudly. The older
+`box run-script release:hotfix` name remains as an alias. Neither command creates, merges, or
+finishes a Gitflow hotfix branch.
 
 ## If something fails partway
 
@@ -135,10 +231,16 @@ Everything that can stop a release happens **before** anything is published. If 
 **after** publishing, do not run the release again: the version is already out, so the checks
 will refuse. The failure message prints the exact commands to finish by hand.
 
-To finish only the tag and GitHub Release:
+To finish the tag and GitHub Release when the tag was not created yet:
 
 ```
 box task run taskFile=build/Release.cfc target=github :version=1.0.1
+```
+
+If the failure message says the tag was already pushed, publish that existing tag instead:
+
+```
+box task run taskFile=build/Release.cfc target=github :version=1.0.1 :existingTag=true
 ```
 
 ## Common problems
@@ -153,3 +255,5 @@ box task run taskFile=build/Release.cfc target=github :version=1.0.1
 | `The "## [Unreleased]" section is empty` | Write your release notes first. Nothing was changed. |
 | `is not a prerelease, so there is nothing to step forward` | Use `bump:beta` to start one, not `bump:prerelease`. |
 | `Tag v1.0.1 already exists` | That version is already released. Raise the version. |
+| `Tag v1.0.1 already exists on origin` | Fetch tags and choose a version that has not already been published. |
+| `Tag v1.0.1 does not point at the checked-out commit` | A tag-triggered build checked out the wrong source. Check the workflow ref and version. |
