@@ -7,6 +7,8 @@ and the version numbers follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-31
+
 ### Added
 
 - A Gitflow release cheat sheet covering plain Git, pull-request, `git-flow`, and hotfix paths.
