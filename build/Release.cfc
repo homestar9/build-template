@@ -149,20 +149,26 @@ component {
 		}
 
 		// 3. A real branch-based release only runs from the production branch named in build.json.
-		//    A dry run may rehearse the release branch, and an existing-tag release is normally a
-		//    detached checkout in CI, so neither of those should be rejected here.
+		//    A dry run may rehearse the release branch. Existing-tag mode accepts production or a
+		//    detached checkout (as used by tag-triggered CI), but not a tagged release branch.
 		var branch = variables.config.execNative( "git", [ "rev-parse", "--abbrev-ref", "HEAD" ] );
 		if ( branch.exitCode != 0 ) {
 			return error( "git could not identify the checked-out branch (#branch.output#)." );
 		}
-		if ( !arguments.existingTag && trim( branch.output ) != variables.s.branch && arguments.dryRun ) {
+		var branchName = trim( branch.output );
+		if ( arguments.existingTag && branchName != variables.s.branch && branchName != "HEAD" ) {
+			return error(
+				"Existing-tag releases run from production branch #variables.s.branch# or a detached tag checkout, "
+				& "but you are on #branchName#."
+			);
+		} else if ( !arguments.existingTag && branchName != variables.s.branch && arguments.dryRun ) {
 			print
-				.boldYellowLine( "  warning  rehearsing from #trim( branch.output )#, not production branch #variables.s.branch#" )
+				.boldYellowLine( "  warning  rehearsing from #branchName#, not production branch #variables.s.branch#" )
 				.yellowLine( "           A real release still has to run from #variables.s.branch#." )
 				.toConsole();
-		} else if ( !arguments.existingTag && trim( branch.output ) != variables.s.branch ) {
+		} else if ( !arguments.existingTag && branchName != variables.s.branch ) {
 			return error(
-				"Releases come from the production branch #variables.s.branch#, but you are on #trim( branch.output )#. "
+				"Releases come from the production branch #variables.s.branch#, but you are on #branchName#. "
 				& "Switch branch, or change ""branch"" in build/build.json."
 			);
 		}
@@ -176,9 +182,21 @@ component {
 		} else {
 			var tagCheck = variables.config.execNative( "git", [ "rev-parse", "-q", "--verify", "refs/tags/" & tagName ] );
 			if ( tagCheck.exitCode == 0 ) {
+				var tagCommit  = variables.config.execNative( "git", [ "rev-list", "-n", "1", "refs/tags/" & tagName ] );
+				var headCommit = variables.config.execNative( "git", [ "rev-parse", "HEAD" ] );
+				if (
+					tagCommit.exitCode == 0
+						&& headCommit.exitCode == 0
+						&& trim( tagCommit.output ) == trim( headCommit.output )
+				) {
+					return error(
+						"Tag #tagName# already exists at this commit. If Gitflow or GitKraken created it "
+						& "intentionally, publish it with: box run-script release:existing-tag"
+					);
+				}
 				return error(
-					"Tag #tagName# already exists locally, so #releaseVersion# has already been released. "
-					& "Raise the version first: box run-script bump:patch"
+					"Tag #tagName# already exists locally at a different commit. Do not move a published tag. "
+					& "Verify the tag and release history, or choose a new version."
 				);
 			}
 			var remoteTag = variables.config.execNative(
@@ -187,8 +205,9 @@ component {
 			);
 			if ( remoteTag.exitCode == 0 ) {
 				return error(
-					"Tag #tagName# already exists on origin, so #releaseVersion# has already been released. "
-					& "Fetch the tags and raise the version before trying again."
+					"Tag #tagName# already exists on origin. Fetch tags first. If a Gitflow tool created it "
+					& "for this release, run box run-script release:existing-tag from its tagged production "
+					& "commit; otherwise the version is already claimed."
 				);
 			}
 			if ( remoteTag.exitCode != 2 ) {

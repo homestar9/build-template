@@ -131,6 +131,7 @@ component {
 			"release"         : "task run taskFile=build/Release.cfc target=run :version=`package show version`",
 			"release:check"   : "task run taskFile=build/Doctor.cfc",
 			"release:dryrun"  : "task run taskFile=build/Release.cfc target=run :version=`package show version` :dryRun=true",
+			"release:existing-tag" : "task run taskFile=build/Release.cfc target=run :version=`package show version` :existingTag=true",
 			"release:skip-tests" : "task run taskFile=build/Release.cfc target=run :version=`package show version` :skipTests=true",
 			"release:hotfix"  : "task run taskFile=build/Release.cfc target=run :version=`package show version` :skipTests=true",
 			"test:engines"    : "task run taskFile=build/TestEngines.cfc",

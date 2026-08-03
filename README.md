@@ -116,6 +116,10 @@ If your changelog has a different filename, use that filename in the `git add` c
 what the next commit will contain. `git diff --staged` previews that selection. The commit is
 only local until you send it to the remote with `git push`.
 
+**Using GitKraken or another Git GUI?** Review the changed `box.json` and changelog, stage only
+those release files, review the staged changes, commit them as `Release 1.0.1`, and then push
+the current branch. Those are the GUI equivalents of the commands above.
+
 ### 4. Check that the project is ready
 
 Start the project's test server if tests are enabled, then run:
@@ -159,6 +163,7 @@ The finished zip and checksum are saved under `.artifacts/`.
 | `box run-script release:check` | Find anything that would stop a release. |
 | `box run-script release:dryrun` | Rehearse a release without publishing. |
 | `box run-script release` | Build and publish the current version. |
+| `box run-script release:existing-tag` | Publish a tag already created at the checked-out commit by Gitflow or GitKraken. |
 | `box run-script release:skip-tests` | Publish without rerunning tests that were already completed. |
 | `box run-script release:hotfix` | Alias for `release:skip-tests`; it does not manage a Gitflow hotfix branch. |
 | `box run-script bump:patch` | Release a backward-compatible bug fix. |

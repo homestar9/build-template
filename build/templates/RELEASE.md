@@ -36,6 +36,10 @@ it if your project only supports one engine.
 
 ### 3. Raise the version
 
+> **Using Gitflow?** Create `release/<version>` from `develop` first, then run the bump on
+> that release branch. Do not bump `develop` before creating the branch. Follow the complete
+> sequence in the [Gitflow cheat sheet](#gitflow-cheat-sheet) below.
+
 ```
 box run-script bump:patch     # bug fixes           1.0.0 -> 1.0.1
 box run-script bump:minor     # new features        1.0.0 -> 1.1.0
@@ -108,6 +112,10 @@ git push origin <current-branch>
 
 Replace `CHANGELOG.md`, `1.0.1`, and `<current-branch>` with the values for your project.
 
+**Using GitKraken or another Git GUI?** Review the changed `box.json` and changelog, stage only
+those release files, review the staged changes, commit them as `Release 1.0.1`, and then push
+the current branch. Those are the GUI equivalents of the commands above.
+
 - `git status` lists changed and untracked files.
 - `git diff` shows the unstaged version and changelog edits for review.
 - `git add` selects exactly those files for the next commit.
@@ -143,13 +151,25 @@ package, publishes it, tags the version, and creates the GitHub Release.
 
 In Gitflow, `develop` collects features, `release/<version>` prepares a release, and the
 production branch records published releases. A finished release must reach both production
-and `develop`. The build kit's `branch` setting always names production. See Atlassian's
+and `develop`. The build kit's `branch` setting always names production.
+
+The branch order is the important part:
+
+1. Create the release branch from an up-to-date `develop`.
+2. While checked out on the release branch, bump the version and commit the version and
+   changelog changes. **Do not run the bump on `develop` before creating the branch.**
+3. Test and rehearse on the release branch.
+4. Finish the release by merging it into both production and `develop`.
+5. Publish from production, using the command that matches whichever tool created the tag.
+
+See Atlassian's
 [Gitflow workflow guide](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow/)
 for the branch model.
 
 ### Plain Git or pull requests
 
-This example releases `1.2.0`; substitute your version and production branch name.
+This path lets the build kit create the tag. The example releases `1.2.0`; substitute your
+version and production branch name.
 
 1. Start from an up-to-date `develop` branch:
 
@@ -159,8 +179,18 @@ This example releases `1.2.0`; substitute your version and production branch nam
    git switch -c release/1.2.0
    ```
 
-2. Write the notes, run the appropriate `bump:` command, and use the explicit review, `add`,
-   and `commit` commands from step 4 above. Push the preparation branch with:
+2. You are now on `release/1.2.0`. Finalize the notes and run the appropriate bump here, not
+   on `develop`:
+
+   ```
+   box run-script bump:minor
+   git diff -- box.json CHANGELOG.md
+   git add box.json CHANGELOG.md
+   git diff --staged
+   git commit -m "Release 1.2.0"
+   ```
+
+   Push the preparation branch with:
 
    ```
    git push -u origin release/1.2.0
@@ -189,7 +219,31 @@ This example releases `1.2.0`; substitute your version and production branch nam
    and remotely if your pull-request host did not already do so.
 
 A Gitflow hotfix starts from production instead of `develop`, usually bumps the patch version,
-and is also merged into production and `develop` before publishing with the same final steps.
+and is also bumped on its `hotfix/<version>` branch before being merged into production and
+`develop`.
+
+### Using GitKraken
+
+GitKraken's **Finish release** action merges the release into production and `develop` and
+always creates a tag. It does not offer the command-line extension's no-tag finish option.
+Configure the version-tag prefix under **Preferences > Gitflow** to match `tagPrefix` in
+build/build.json; the usual value is `v`. See GitKraken's
+[Gitflow documentation](https://help.gitkraken.com/gitkraken-desktop/git-flow/).
+
+1. Create `release/1.2.0` from `develop` in GitKraken.
+2. On `release/1.2.0`, run `box run-script bump:minor`, review the files, and commit them.
+3. Test and run `box run-script release:dryrun` on the release branch.
+4. Use **Finish release**. GitKraken merges both branches and creates `v1.2.0`.
+5. Push production, `develop`, and `v1.2.0`, then check out the updated production branch.
+6. Choose one publisher:
+   - If the tag push triggers the supplied GitHub Actions workflow, let that workflow publish.
+   - To publish locally, run `box run-script release:existing-tag`.
+
+`release:existing-tag` runs the normal checks, tests, package build, ForgeBox publish, and
+GitHub Release creation, but it does not create, move, or push the tag. It refuses unless the
+expected tag points exactly at the checked-out production commit. Do not run the ordinary
+`box run-script release` after GitKraken finishes; that command owns tag creation and therefore
+rejects an existing tag.
 
 ### Using the `git-flow` extension
 
@@ -208,12 +262,35 @@ Choose exactly one of these finish paths so only one tool owns the tag:
 - **Publish locally with the build kit:** run `git flow release finish -n 1.2.0` so Gitflow
   performs both merges without tagging. Push production and `develop`, switch to production,
   then run `box run-script release`; the build kit creates and pushes `v1.2.0`.
-- **Publish from the tag-triggered GitHub Actions workflow:** run the normal
-  `git flow release finish 1.2.0`, then push production, `develop`, and `v1.2.0`. Gitflow owns
-  the tag and Actions publishes that existing tag without recreating it.
+- **Let Gitflow create the tag:** run the normal `git flow release finish 1.2.0`, then push
+  production, `develop`, and `v1.2.0`. Either let the tag-triggered GitHub Actions workflow
+  publish it or switch to production and run `box run-script release:existing-tag` locally.
 
-Never run the normal tagging form of `git flow release finish` and then run the local release
-command. Both would try to own the same tag, and the local command correctly refuses.
+Never run the normal tagging form of `git flow release finish` and then run the ordinary
+`box run-script release` command. Both would try to own the same tag, and the ordinary command
+correctly refuses.
+
+### If the release tag already exists before Finish
+
+First find out whether the tag is only local or has already been shared:
+
+```
+git fetch --tags origin
+git show --no-patch --decorate v1.2.0
+git ls-remote --tags origin refs/tags/v1.2.0
+```
+
+- If both finish merges already landed and `v1.2.0` points at production `HEAD`, do not Finish
+  again. Push any unpushed branches and tag, then use `release:existing-tag` or the tag workflow.
+- If the required merges have not landed, merge the release into production and `develop`
+  manually or through pull requests so no tool tries to recreate the tag. The tag must resolve
+  to the final production `HEAD` before `release:existing-tag` will publish it.
+- If the tag is an accidental, local-only tag that has never been published or consumed,
+  delete that local tag and then let GitKraken Finish. In GitKraken, right-click the tag and
+  choose **Delete locally**; at the command line use `git tag -d v1.2.0`.
+- If the tag is on the remote, has already been published, or points at a different commit,
+  do not silently delete or move it. The version may already be claimed. Verify the release
+  history and either choose a new version or coordinate an intentional repair.
 
 ## Already tested and deliberately skipping the release test run?
 

@@ -7,6 +7,20 @@ and the version numbers follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
+### Added
+
+- `release:existing-tag` for publishing a release tag created while finishing a Gitflow
+  release in tools such as GitKraken.
+
+### Changed
+
+- The Gitflow guide now makes the branch transitions explicit: create the release branch
+  first, bump and commit on that branch, then finish into production and `develop`.
+- Git command sequences now include their equivalent review, stage, commit, and push workflow
+  for people using GitKraken or another Git GUI.
+- GitKraken has its own finish path and safe guidance for intentional, stale, and previously
+  published tags.
+
 ## [1.2.0] - 2026-07-31
 
 ### Added
