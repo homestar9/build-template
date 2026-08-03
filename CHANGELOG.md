@@ -7,6 +7,8 @@ and the version numbers follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
+## [1.3.0] - 2028-08-03
+
 ### Added
 
 - `release:existing-tag` for publishing a release tag created while finishing a Gitflow
