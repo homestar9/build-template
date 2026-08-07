@@ -1,5 +1,7 @@
 # build-template
 
+![Build Template Logo](https://raw.githubusercontent.com/homestar9/build-template/refs/heads/master/build-template-logo.avif)
+
 `build-template` is a set of [CommandBox](https://www.ortussolutions.com/products/commandbox)
 tasks for CFML projects. Copy the `build` folder into a project and it can:
 
