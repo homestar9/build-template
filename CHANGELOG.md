@@ -7,6 +7,8 @@ and the version numbers follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
+## [1.4.0] - 2028-08-07
+
 ### Added
 
 - A TestBox suite for version rules, changelog parsing, project settings, public task APIs,
