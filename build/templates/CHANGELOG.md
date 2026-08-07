@@ -8,18 +8,18 @@ and the version numbers follow [Semantic Versioning](https://semver.org/spec/v2.
 <!--
 How this file works:
 
-Write your notes under [Unreleased] as you go. When you release, run
-`box run-script bump:patch` (or bump:minor / bump:major). That moves everything
-under [Unreleased] into a new dated section for the version you are releasing,
-and leaves [Unreleased] empty for next time.
+Write notes under [Unreleased] while you work. Run `box run-script bump:patch`,
+`bump:minor`, or `bump:major` when the release is ready. The command moves the
+notes into a dated section for the new version. It leaves [Unreleased] empty for
+the next change.
 
 The dated section becomes the release notes on GitHub, so write it for the
 people who use your project.
 
 The usual headings are: Added, Changed, Deprecated, Removed, Fixed, Security.
 
-Keep this note ABOVE [Unreleased]. Anything below that heading is treated as
-release notes and would be copied into your next version's section.
+Keep this comment above [Unreleased]. The bump task treats the content below
+[Unreleased] as release notes.
 -->
 
 ## [Unreleased]

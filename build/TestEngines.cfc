@@ -1,44 +1,29 @@
 /**
- * Runs the whole test suite on every engine, one after another.
+ * Runs the project test suite on every configured CFML engine.
  *
- * Run it with: box run-script test:engines
+ * Run `box run-script test:engines` from the project root. Add the engine names and server JSON
+ * files to build/build.json first. The engines run one at a time because they share one port.
  *
- * Do this before a release. It is deliberately not part of the release itself: an engine that
- * fails to start should not stop a publish, and the release already runs the suite once on
- * whichever engine is up.
- *
- * Every engine shares the same port, so this runs strictly in order: stop everything, start
- * one engine, wait for it to answer, run the suite, stop it, move to the next. Expect it to
- * take a while. The first run of an engine also downloads it, which takes longer still.
- *
- * Every engine gets its turn even when an earlier one fails, so one broken engine never hides
- * the others. The end of the run prints a line per engine, and the task still exits with an
- * error if any of them failed.
- *
- * List your engines in build/build.json.
+ * The task stops old servers, starts one engine, waits for the site, runs the suite, and stops
+ * that engine. Every configured engine gets a turn even when an earlier engine fails. The task
+ * reports all results and returns an error when any engine failed.
  */
 component {
 
-	/**
-	 * init
-	 *
-	 * Loads the settings.
-	 */
+	/** Loads the shared settings. */
 	function init(){
-		variables.config = new BuildConfig( getDirectoryFromPath( getCurrentTemplatePath() ) );
-		variables.s      = variables.config.getSettings();
+		variables.config   = new BuildConfig( getDirectoryFromPath( getCurrentTemplatePath() ) );
+		variables.settings = variables.config.getSettings();
 		return this;
 	}
 
 	/**
-	 * run
-	 *
 	 * Runs the suite on each engine in turn. Every engine gets its turn even when an earlier one
 	 * fails. Prints a line per engine at the end and errors out if any of them failed, so a
 	 * failure still stops CI and the release. Leaves every server stopped either way.
 	 */
 	function run(){
-		if ( !arrayLen( variables.s.engines ) ) {
+		if ( !arrayLen( variables.settings.engines ) ) {
 			return fail(
 				"No engines are listed in build/build.json.",
 				[
@@ -60,59 +45,52 @@ component {
 		// Only one server can hold the port, and we do not know which one is up.
 		stopAllEngines();
 
-		for ( var engine in variables.s.engines ) {
-			var engineName  = engine.name ?: engine.configFile;
-			var engineStart = getTickCount();
-			print.line().boldBlueLine( "=== #engineName# (#engine.configFile#) ===" ).toConsole();
-
-			var startResult = startEngine( engine, engineName );
-			if ( !startResult.ok ) {
-				results.append( recordFailure( engineName, engineStart, startResult.reason ) );
-				continue;
-			}
-
-			var warmUpResult = warmUp( engine, engineName );
-			if ( !warmUpResult.ok ) {
-				results.append( recordFailure( engineName, engineStart, warmUpResult.reason ) );
-				continue;
-			}
-
-			print.blueLine( "Running the suite on #engineName#..." ).toConsole();
-			var suiteFailed = false;
-			try {
-				command( "testbox run" )
-					.params( runner = variables.s.testRunner, verbose = false )
-					.run();
-				suiteFailed = ( shell.getExitCode() != 0 );
-			} catch ( any e ) {
-				suiteFailed = true;
-			}
-
-			stopEngine( engine.configFile );
-
-			if ( suiteFailed ) {
-				results.append( recordFailure( engineName, engineStart, "the suite failed" ) );
-				continue;
-			}
-
-			var minutes = numberFormat( ( getTickCount() - engineStart ) / 60000, "0.9" );
-			results.append( {
-				"name"    : engineName,
-				"passed"  : true,
-				"minutes" : minutes,
-				"reason"  : ""
-			} );
-			print.boldGreenLine( "#engineName#: passed in #minutes# min." ).toConsole();
+		for ( var engine in variables.settings.engines ) {
+			results.append( runEngine( engine ) );
 		}
 
 		return report( results, started );
 	}
 
-	/********************************************* PRIVATE HELPERS *********************************************/
+	// ENGINE WORKFLOW
+
+	private struct function runEngine( required struct engine ){
+		var engineName  = arguments.engine.name ?: arguments.engine.configFile;
+		var engineStart = getTickCount();
+		print.line().boldBlueLine( "=== #engineName# (#arguments.engine.configFile#) ===" ).toConsole();
+
+		var startResult = startEngine( arguments.engine, engineName );
+		if ( !startResult.ok ) {
+			return recordFailure( engineName, engineStart, startResult.reason );
+		}
+
+		var warmUpResult = warmUp( arguments.engine, engineName );
+		if ( !warmUpResult.ok ) {
+			return recordFailure( engineName, engineStart, warmUpResult.reason );
+		}
+
+		var suiteFailed = runTestSuite( engineName );
+		stopEngine( arguments.engine.configFile );
+		if ( suiteFailed ) {
+			return recordFailure( engineName, engineStart, "the suite failed" );
+		}
+
+		return recordSuccess( engineName, engineStart );
+	}
+
+	private boolean function runTestSuite( required string engineName ){
+		print.blueLine( "Running the suite on #arguments.engineName#..." ).toConsole();
+		try {
+			command( "testbox run" )
+				.params( runner = variables.settings.testRunner, verbose = false )
+				.run();
+			return shell.getExitCode() != 0;
+		} catch ( any ignoredException ) {
+			return true;
+		}
+	}
 
 	/**
-	 * startEngine
-	 *
 	 * Starts one engine's server. Returns { ok, reason } rather than stopping the run, so the
 	 * sweep can record the failure and move on to the next engine.
 	 *
@@ -132,9 +110,9 @@ component {
 				.params( serverConfigFile = arguments.engine.configFile )
 				.run();
 			startFailed = ( shell.getExitCode() != 0 );
-		} catch ( any e ) {
+		} catch ( any exception ) {
 			startFailed = true;
-			startError  = e.message;
+			startError  = exception.message;
 		}
 		if ( startFailed ) {
 			print
@@ -161,8 +139,6 @@ component {
 	}
 
 	/**
-	 * waitForPortToFree
-	 *
 	 * Waits until nothing answers on the test port, so the next engine is not started while the
 	 * last one is still letting go of it. Gives up after a short wait and lets the start attempt
 	 * produce the real error.
@@ -183,7 +159,7 @@ component {
 					result       = "local.probe"
 				);
 				answered = ( val( local.probe.statuscode ?: "0" ) > 0 );
-			} catch ( any e ) {
+			} catch ( any ignoredException ) {
 				answered = false;
 			}
 			if ( !answered ) {
@@ -200,8 +176,6 @@ component {
 	}
 
 	/**
-	 * warmUp
-	 *
 	 * Waits until the site answers, so the suite never runs against a server that is still
 	 * starting up. A half-started app produces failures that look real but are not. Returns
 	 * { ok, reason } so the sweep can record the failure and move on to the next engine.
@@ -210,11 +184,11 @@ component {
 	 * @engineName The name to show.
 	 */
 	private struct function warmUp( required struct engine, required string engineName ){
-		var attempts = variables.s.warmup.attempts;
-		var delay    = variables.s.warmup.delaySeconds;
-		var probeUrl = variables.config.probeUrl();
+		var attempts    = variables.settings.warmup.attempts;
+		var delaySeconds = variables.settings.warmup.delaySeconds;
+		var probeUrl    = variables.config.probeUrl();
 
-		print.blueLine( "Waiting for #arguments.engineName# (up to #attempts * delay# seconds)..." ).toConsole();
+		print.blueLine( "Waiting for #arguments.engineName# (up to #attempts * delaySeconds# seconds)..." ).toConsole();
 		var lastStatus = 0;
 		for ( var attempt = 1; attempt <= attempts; attempt++ ) {
 			var httpResult = "";
@@ -228,7 +202,7 @@ component {
 					result       = "local.httpResult"
 				);
 				lastStatus = val( httpResult.statuscode ?: "0" );
-			} catch ( any e ) {
+			} catch ( any ignoredException ) {
 				lastStatus = 0;
 			}
 			// Anything in the 200s or 300s means the site answered.
@@ -236,7 +210,7 @@ component {
 				print.greenLine( "#arguments.engineName# is up (status #lastStatus#)." ).toConsole();
 				return { "ok" : true, "reason" : "" };
 			}
-			sleep( delay * 1000 );
+			sleep( delaySeconds * 1000 );
 		}
 
 		stopEngine( arguments.engine.configFile );
@@ -253,21 +227,17 @@ component {
 	}
 
 	/**
-	 * stopAllEngines
-	 *
 	 * Stops every listed engine, ignoring failures. At most one is running, and stopping one
 	 * that is not running only prints a complaint.
 	 */
 	private function stopAllEngines(){
 		print.blueLine( "Stopping any running server..." ).toConsole();
-		for ( var engine in variables.s.engines ) {
+		for ( var engine in variables.settings.engines ) {
 			stopEngine( engine.configFile );
 		}
 	}
 
 	/**
-	 * stopEngine
-	 *
 	 * Stops one server quietly. A failure here never matters: either it was not running, or
 	 * the next start will complain about the port anyway.
 	 *
@@ -276,14 +246,12 @@ component {
 	private function stopEngine( required string configFile ){
 		try {
 			command( "server stop" ).params( serverConfigFile = arguments.configFile ).run();
-		} catch ( any e ) {
+		} catch ( any ignoredException ) {
 			// Not running, nothing to do.
 		}
 	}
 
 	/**
-	 * recordFailure
-	 *
 	 * Builds the result entry for an engine that failed and prints the one-line reason.
 	 *
 	 * @engineName  The name to show.
@@ -301,9 +269,18 @@ component {
 		};
 	}
 
+	private struct function recordSuccess( required string engineName, required numeric engineStart ){
+		var minutes = numberFormat( ( getTickCount() - arguments.engineStart ) / 60000, "0.9" );
+		print.boldGreenLine( "#arguments.engineName#: passed in #minutes# min." ).toConsole();
+		return {
+			"name"    : arguments.engineName,
+			"passed"  : true,
+			"minutes" : minutes,
+			"reason"  : ""
+		};
+	}
+
 	/**
-	 * report
-	 *
 	 * Prints a line per engine and ends the task. Errors out when any engine failed, so the
 	 * exit code still says the sweep was not clean.
 	 *
@@ -312,7 +289,7 @@ component {
 	 */
 	private function report( required array results, required numeric started ){
 		var totalMinutes = numberFormat( ( getTickCount() - arguments.started ) / 60000, "0.9" );
-		var failed       = arguments.results.filter( function( result ){
+		var failedResults = arguments.results.filter( function( result ){
 			return !result.passed;
 		} );
 
@@ -326,24 +303,22 @@ component {
 		}
 		print.line().toConsole();
 
-		if ( !failed.len() ) {
+		if ( !failedResults.len() ) {
 			print.boldGreenLine( "All #arguments.results.len()# engines passed." ).toConsole();
 			return;
 		}
 
-		var failedNames = failed.map( function( result ){
+		var failedNames = failedResults.map( function( result ){
 			return result.name;
 		} );
 
 		return error(
-			"#failed.len()# of #arguments.results.len()# engines failed: "
+			"#failedResults.len()# of #arguments.results.len()# engines failed: "
 			& failedNames.toList( ", " ) & "."
 		);
 	}
 
 	/**
-	 * fail
-	 *
 	 * Stops the task, printing guidance that spans several lines.
 	 *
 	 * CommandBox's error() removes line breaks from its message, so anything longer than a

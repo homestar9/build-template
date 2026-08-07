@@ -1,20 +1,19 @@
 ##
-## Optional: release from GitHub Actions instead of your own machine.
+## This optional workflow releases the project from GitHub Actions.
 ##
 ## To use it, copy this file to .github/workflows/release.yml in your project.
 ## It is kept here so it does not run inside the build kit repository itself.
 ##
-## It runs when you push a version tag (v1.2.3), or when you start it by hand from the
-## Actions tab. A tag run publishes that existing tag; a manual branch run lets the release
-## task create the tag. Both paths build the package, run the tests, and publish.
+## It runs after you push a version tag such as v1.2.3. You can also start it by hand from the
+## Actions tab. A tag run publishes the existing tag. A manual branch run lets Release.cfc
+## create the tag. Both paths build, test, and publish the package.
 ##
 ## Two secrets are needed in your repository settings:
 ##   FORGEBOX_API_TOKEN   from https://forgebox.io  (only if you publish to ForgeBox)
 ## GITHUB_TOKEN is provided automatically.
 ##
-## Note on the build number: this passes the run number from Actions as the build identifier,
-## so packages are stamped 1.2.3+7 rather than with a commit hash. Drop the :buildID line to
-## keep the commit hash instead.
+## This workflow passes the Actions run number as the build identifier. For example, run 7
+## stamps the package as 1.2.3+7. Remove the :buildID line to use the commit hash instead.
 ##
 
 name: Release

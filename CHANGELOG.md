@@ -7,6 +7,20 @@ and the version numbers follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
+### Added
+
+- A TestBox suite for version rules, changelog parsing, project settings, public task APIs,
+  multi-engine control flow, installation, package builds, and safe release dry runs.
+
+### Changed
+
+- All build task components now use direct names, smaller workflow functions, and plain-language
+  documentation for developers who are new to the project.
+- Version, changelog, and project-detection rules now live in small internal services under
+  `build/lib/`.
+- Multi-engine documentation now states that every configured engine runs before the command
+  reports all failures.
+
 ## [1.3.0] - 2028-08-03
 
 ### Added

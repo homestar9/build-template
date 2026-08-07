@@ -1,34 +1,27 @@
 /**
- * Checks whether this project is ready to release.
+ * Reports whether the project is ready for a release.
  *
- * Run it with: box run-script release:check
+ * Run `box run-script release:check` from the project root. The task checks the settings,
+ * repository, changelog, required tools, and test server. It reports every problem it can find
+ * instead of stopping after the first problem.
  *
- * It runs every check a release runs, plus a few more, and reports all of them instead of
- * stopping at the first problem. Each failure comes with the command that fixes it. Nothing
- * here changes anything, so it is always safe to run.
+ * This task does not change files, Git state, servers, or remote services.
  */
 component {
 
-	/**
-	 * init
-	 *
-	 * Loads the settings. A broken build.json is reported rather than thrown, because telling
-	 * someone their config is wrong is exactly this task's job.
-	 */
+	/** Loads settings while keeping configuration errors for the final report. */
 	function init(){
 		variables.configError = "";
 		try {
 			variables.config = new BuildConfig( getDirectoryFromPath( getCurrentTemplatePath() ) );
-			variables.s      = variables.config.getSettings();
-		} catch ( any e ) {
-			variables.configError = e.message;
+			variables.settings      = variables.config.getSettings();
+		} catch ( any exception ) {
+			variables.configError = exception.message;
 		}
 		return this;
 	}
 
 	/**
-	 * run
-	 *
 	 * Runs every check and prints a summary.
 	 */
 	function run(){
@@ -61,30 +54,27 @@ component {
 		}
 	}
 
-	/********************************************* CHECKS *********************************************/
+	// READINESS CHECKS
 
 	/**
-	 * checkConfig
-	 *
 	 * Reports the settings a release will use, so surprises show up here rather than mid
 	 * release.
 	 */
 	private function checkConfig(){
 		print.line().boldLine( "Settings" ).toConsole();
 		report( true, "build.json", "loaded" );
+		var publishSummary = "ForgeBox=#yesNo( variables.settings.publish.forgebox )#  "
+			& "GitHub=#yesNo( variables.settings.publish.github )#";
 		print
-			.line( "        project:   #variables.config.slug()# #variables.config.version()# (#variables.s.projectType#)" )
-			.line( "        branch:    #variables.s.branch#" )
-			.line( "        publish:   ForgeBox=#yesNo( variables.s.publish.forgebox )#  GitHub=#yesNo( variables.s.publish.github )#" )
-			.line( "        tests:     #( variables.s.runTests ? "run during build" : "OFF in build.json" )#" )
+			.line( "        project:   #variables.config.slug()# #variables.config.version()# (#variables.settings.projectType#)" )
+			.line( "        branch:    #variables.settings.branch#" )
+			.line( "        publish:   #publishSummary#" )
+			.line( "        tests:     #( variables.settings.runTests ? "run during build" : "OFF in build.json" )#" )
 			.toConsole();
 	}
 
 	/**
-	 * checkGit
-	 *
-	 * Checks git itself, the branch, uncommitted work, whether this version is already
-	 * released, and whether the remote can actually be reached.
+	 * Checks Git first. The remaining Git checks only run when the folder is a repository.
 	 */
 	private function checkGit(){
 		print.line().boldLine( "Git" ).toConsole();
@@ -104,7 +94,13 @@ component {
 			return;
 		}
 		report( true, "git", "found at " & variables.config.findBinary( "git" ) );
+		checkWorkingTree( status );
+		checkReleaseBranch();
+		checkVersionTag();
+		checkRemote();
+	}
 
+	private void function checkWorkingTree( required struct status ){
 		if ( len( trim( status.output ) ) ) {
 			var changed = listLen( status.output, chr( 10 ) );
 			report(
@@ -116,20 +112,24 @@ component {
 		} else {
 			report( true, "clean checkout", "nothing uncommitted" );
 		}
+	}
 
+	private void function checkReleaseBranch(){
 		var branch = trim( variables.config.execNative( "git", [ "rev-parse", "--abbrev-ref", "HEAD" ] ).output );
-		if ( branch != variables.s.branch ) {
+		if ( branch != variables.settings.branch ) {
 			report(
 				false,
 				"branch",
-				"on #branch#, releases come from production branch #variables.s.branch#",
-				"Switch with: git switch #variables.s.branch#   (or correct ""branch"" in build/build.json)"
+				"on #branch#, releases come from production branch #variables.settings.branch#",
+				"Switch with: git switch #variables.settings.branch#   (or correct ""branch"" in build/build.json)"
 			);
 		} else {
 			report( true, "branch", branch );
 		}
+	}
 
-		var tagName = variables.s.tagPrefix & variables.config.version();
+	private void function checkVersionTag(){
+		var tagName = variables.settings.tagPrefix & variables.config.version();
 		var tagged  = variables.config.execNative( "git", [ "rev-parse", "-q", "--verify", "refs/tags/" & tagName ] );
 		if ( tagged.exitCode == 0 ) {
 			report(
@@ -141,33 +141,33 @@ component {
 		} else {
 			report( true, "version", "#tagName# has not been released" );
 		}
+	}
 
-		// Reaching the remote is what catches a missing or rejected SSH key, which otherwise
-		// only shows up part way through a release.
+	private void function checkRemote(){
 		var remote = variables.config.execNative( "git", [ "ls-remote", "--exit-code", "origin", "HEAD" ] );
 		if ( remote.exitCode != 0 ) {
-			var hint = remote.output contains "publickey"
-				? "Your SSH key is not accepted. Add it at https://github.com/settings/ssh/new, or switch to HTTPS: git remote set-url origin https://github.com/<you>/<repo>.git && gh auth setup-git"
+			var fix = remote.output contains "publickey"
+				? "Your SSH key is not accepted. Add it at https://github.com/settings/ssh/new, "
+					& "or switch to HTTPS: git remote set-url origin "
+					& "https://github.com/<you>/<repo>.git && gh auth setup-git"
 				: "Check the remote and your access: git remote -v";
-			report( false, "remote", "cannot reach origin", hint );
+			report( false, "remote", "cannot reach origin", fix );
 		} else {
 			report( true, "remote", "origin reachable" );
 		}
 	}
 
 	/**
-	 * checkChangelog
-	 *
 	 * Checks the changelog exists and holds what a release needs.
 	 */
 	private function checkChangelog(){
 		print.line().boldLine( "Changelog" ).toConsole();
 
-		var path = variables.config.repoPath( variables.s.changelog );
+		var path = variables.config.repoPath( variables.settings.changelog );
 		if ( !fileExists( path ) ) {
 			report(
 				false,
-				variables.s.changelog,
+				variables.settings.changelog,
 				"missing",
 				"Create it: box task run taskFile=build/Install.cfc"
 			);
@@ -196,7 +196,7 @@ component {
 				false,
 				"notes for #version#",
 				"no ""#### [#version#]"" section",
-				variables.s.publish.github
+				variables.settings.publish.github
 					? "Run: box run-script bump:patch  (moves [Unreleased] into a dated section)"
 					: "Only needed for a GitHub Release, which is off in build.json."
 			);
@@ -204,14 +204,16 @@ component {
 	}
 
 	/**
-	 * checkTools
-	 *
-	 * Checks the outside tools a release needs, and only those it actually needs.
+	 * Checks only the publishing tools enabled in build.json.
 	 */
 	private function checkTools(){
 		print.line().boldLine( "Tools" ).toConsole();
+		checkGitHubCli();
+		checkForgeBoxLogin();
+	}
 
-		if ( variables.s.publish.github ) {
+	private void function checkGitHubCli(){
+		if ( variables.settings.publish.github ) {
 			if ( !variables.config.commandExists( "gh" ) ) {
 				report(
 					false,
@@ -230,15 +232,17 @@ component {
 		} else {
 			report( true, "GitHub CLI", "not needed (publish.github is false)" );
 		}
+	}
 
-		if ( variables.s.publish.forgebox ) {
-			var who = "";
+	private void function checkForgeBoxLogin(){
+		if ( variables.settings.publish.forgebox ) {
+			var forgeBoxUser = "";
 			try {
-				who = trim( command( "forgebox whoami" ).run( returnOutput = true ) );
-			} catch ( any e ) {
-				who = "";
+				forgeBoxUser = trim( command( "forgebox whoami" ).run( returnOutput = true ) );
+			} catch ( any ignoredException ) {
+				forgeBoxUser = "";
 			}
-			if ( !len( who ) || who contains "not logged in" ) {
+			if ( !len( forgeBoxUser ) || forgeBoxUser contains "not logged in" ) {
 				report( false, "ForgeBox", "not signed in", "Run: box forgebox login" );
 			} else {
 				report( true, "ForgeBox", "signed in" );
@@ -249,14 +253,12 @@ component {
 	}
 
 	/**
-	 * checkServer
-	 *
 	 * Checks the test server is answering, since the build runs the suite against it.
 	 */
 	private function checkServer(){
 		print.line().boldLine( "Test server" ).toConsole();
 
-		if ( !variables.s.runTests ) {
+		if ( !variables.settings.runTests ) {
 			report( true, "test server", "not needed (runTests is false)" );
 			return;
 		}
@@ -272,7 +274,7 @@ component {
 				redirect     = false,
 				result       = "local.httpResult"
 			);
-		} catch ( any e ) {
+		} catch ( any ignoredException ) {
 			httpResult = { statuscode : "0" };
 		}
 		var statusCode = val( httpResult.statuscode ?: "0" );
@@ -289,11 +291,9 @@ component {
 		}
 	}
 
-	/********************************************* OUTPUT *********************************************/
+	// REPORT OUTPUT
 
 	/**
-	 * report
-	 *
 	 * Prints one result and counts the failures.
 	 *
 	 * @passed  Whether the check passed.
@@ -314,8 +314,6 @@ component {
 	}
 
 	/**
-	 * yesNo
-	 *
 	 * Turns true and false into yes and no for reading.
 	 *
 	 * @value The value to show.

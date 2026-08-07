@@ -1,6 +1,7 @@
 # Build output
 .artifacts/
 .tmp/
+.test-work/
 
 # Local environment and editor settings
 .env
@@ -10,6 +11,7 @@
 # CommandBox
 .engine/
 modules/
+testbox/
 server-*.json
 !build/templates/*.json
 

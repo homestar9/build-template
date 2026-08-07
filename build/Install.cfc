@@ -1,28 +1,24 @@
 /**
- * Sets this build kit up in a project.
+ * Adds the build kit files and commands to a CFML project.
  *
- * Run it once, from your project root:
- *   box task run taskFile=build/Install.cfc
+ * Run `box task run taskFile=build/Install.cfc` from the project root. The task creates
+ * build/build.json, adds release scripts to box.json, creates a changelog when needed, and
+ * copies RELEASE.md into the project root.
  *
- * It writes build/build.json, adds the release scripts to box.json, creates a changelog if you
- * do not have one, and copies RELEASE.md into your project. It never overwrites something you
- * already have unless you pass :force=true, so running it twice is safe.
- *
- * It works out sensible settings by looking at your project: the test runner comes from
- * box.json's testbox entry, and the engine list comes from the server json files in your root.
+ * The task keeps existing files unless `:force=true` is passed. It detects useful defaults
+ * from box.json, Git, and root-level server JSON files.
  */
 component {
 
 	/**
-	 * run
-	 *
-	 * Sets everything up and prints what to do next.
+	 * Runs each installation step and prints the detected settings.
 	 *
 	 * @force Overwrite files that already exist.
 	 */
 	function run( boolean force = false ){
 		variables.buildDir = getDirectoryFromPath( getCurrentTemplatePath() );
 		variables.root     = reReplace( reReplace( variables.buildDir, "[\\/]$", "" ), "[\\/][^\\/]+$", "" );
+		variables.projectSettings = new lib.ProjectSettingsService();
 
 		print.line().boldLine( "Setting up the build kit" ).line( repeatString( "-", 60 ) ).toConsole();
 
@@ -51,11 +47,9 @@ component {
 			.toConsole();
 	}
 
-	/********************************************* STEPS *********************************************/
+	// INSTALLATION STEPS
 
 	/**
-	 * writeBuildJSON
-	 *
 	 * Writes build/build.json, filling in what it can work out from the project.
 	 *
 	 * @force Overwrite an existing file.
@@ -68,20 +62,20 @@ component {
 			return;
 		}
 
-		var box         = deserializeJSON( fileRead( variables.root & "/box.json" ) );
-		var projectType = detectProjectType( box );
+		var packageData = deserializeJSON( fileRead( variables.root & "/box.json" ) );
+		var projectType = variables.projectSettings.detectProjectType( packageData );
 		var settings = {
 			"templateVersion" : "1.0.0",
 			"projectType"     : projectType,
 			"branch"          : detectBranch(),
 			"changelog"       : detectChangelogName(),
-			"testRunner"      : detectTestRunner( box ),
+			"testRunner"      : detectTestRunner( packageData ),
 			"runTests"        : true,
 			"publish"         : {
 				"forgebox" : projectType == "module",
 				"github"   : true
 			},
-			"excludes"    : defaultExcludes( projectType ),
+			"excludes"    : variables.projectSettings.installerDefaultExcludes( projectType ),
 			"excludesAdd" : [],
 			"engines"     : detectEngines()
 		};
@@ -95,8 +89,6 @@ component {
 	}
 
 	/**
-	 * isInstallerSeed
-	 *
 	 * Reports whether build.json is the starter file shipped with this kit. Only a marked
 	 * starter can be replaced without force; malformed and user-owned files remain untouched.
 	 *
@@ -108,26 +100,23 @@ component {
 			return isStruct( settings )
 				&& isBoolean( settings._installerSeed ?: false )
 				&& settings._installerSeed;
-		} catch ( any e ) {
+		} catch ( any ignoredException ) {
 			return false;
 		}
 	}
 
 	/**
-	 * patchBoxJSON
-	 *
-	 * Adds the release scripts to box.json. Existing entries are left exactly as they are, so
-	 * this cannot break scripts you already rely on.
+	 * Adds missing build-kit scripts to box.json. It never replaces an existing script.
 	 */
 	private function patchBoxJSON(){
-		var path = variables.root & "/box.json";
-		var box  = deserializeJSON( fileRead( path ) );
+		var packagePath = variables.root & "/box.json";
+		var packageData = deserializeJSON( fileRead( packagePath ) );
 
-		if ( !structKeyExists( box, "scripts" ) ) {
-			box[ "scripts" ] = {};
+		if ( !structKeyExists( packageData, "scripts" ) ) {
+			packageData[ "scripts" ] = {};
 		}
 
-		var wanted = {
+		var requiredScripts = {
 			"release"         : "task run taskFile=build/Release.cfc target=run :version=`package show version`",
 			"release:check"   : "task run taskFile=build/Doctor.cfc",
 			"release:dryrun"  : "task run taskFile=build/Release.cfc target=run :version=`package show version` :dryRun=true",
@@ -144,31 +133,33 @@ component {
 			"build:package"   : "task run taskFile=build/Build.cfc :projectName=`package show slug` :version=`package show version`"
 		};
 
-		var added = [];
-		var kept  = [];
-		for ( var name in wanted ) {
-			if ( structKeyExists( box.scripts, name ) ) {
-				kept.append( name );
+		var addedScripts    = [];
+		var existingScripts = [];
+		for ( var scriptName in requiredScripts ) {
+			if ( structKeyExists( packageData.scripts, scriptName ) ) {
+				existingScripts.append( scriptName );
 			} else {
-				box.scripts[ name ] = wanted[ name ];
-				added.append( name );
+				packageData.scripts[ scriptName ] = requiredScripts[ scriptName ];
+				addedScripts.append( scriptName );
 			}
 		}
 
-		if ( arrayLen( added ) ) {
-			fileWrite( path, formatJSON( box ) );
-			print.greenLine( "  added #arrayLen( added )# script#( arrayLen( added ) == 1 ? "" : "s" )# to box.json: #added.sort( "text" ).toList( ", " )#" ).toConsole();
+		if ( arrayLen( addedScripts ) ) {
+			fileWrite( packagePath, formatJSON( packageData ) );
+			var scriptCount = arrayLen( addedScripts );
+			var scriptLabel = scriptCount == 1 ? "script" : "scripts";
+			print
+				.greenLine( "  added #scriptCount# #scriptLabel# to box.json: #addedScripts.sort( "text" ).toList( ", " )#" )
+				.toConsole();
 		} else {
 			print.yellowLine( "  skip  box.json already has every script" ).toConsole();
 		}
-		if ( arrayLen( kept ) ) {
-			print.line( "        left alone: #kept.sort( "text" ).toList( ", " )#" ).toConsole();
+		if ( arrayLen( existingScripts ) ) {
+			print.line( "        left alone: #existingScripts.sort( "text" ).toList( ", " )#" ).toConsole();
 		}
 	}
 
 	/**
-	 * writeChangelog
-	 *
 	 * Creates a changelog with an [Unreleased] section when the project has none.
 	 *
 	 * @force Overwrite an existing changelog.
@@ -192,8 +183,6 @@ component {
 	}
 
 	/**
-	 * copyReleaseDoc
-	 *
 	 * Copies RELEASE.md into the project root so the routine is written down where people
 	 * will find it.
 	 *
@@ -214,84 +203,9 @@ component {
 		print.greenLine( "  made  RELEASE.md" ).toConsole();
 	}
 
-	/********************************************* DETECTION *********************************************/
+	// PROJECT DETECTION
 
 	/**
-	 * detectProjectType
-	 *
-	 * Guesses whether this is a module or an app from box.json's type.
-	 *
-	 * @box The parsed box.json.
-	 */
-	private string function detectProjectType( required struct box ){
-		var type = lCase( arguments.box.type ?: "" );
-		// CommandBox package types that describe something installable rather than an app.
-		return listFindNoCase( "modules,commandbox-modules,cachebox-modules,logbox-modules,wirebox-modules,plugins,interceptors", type )
-			? "module"
-			: "app";
-	}
-
-	/**
-	 * defaultExcludes
-	 *
-	 * Returns the complete starter exclusion list for a new project. The list is written into
-	 * build.json so an installed project keeps the packaging policy it reviewed, even when a
-	 * future version of this kit changes its own defaults.
-	 *
-	 * Module packages omit their development toolchain and every hidden item. Applications
-	 * keep files that may be part of a deployment, including modules, resources, package
-	 * manifests, .htaccess, and .well-known.
-	 *
-	 * @projectType Either module or app.
-	 */
-	private array function defaultExcludes( required string projectType ){
-		var common = [
-			"^build$",
-			"^node_modules$",
-			"^test-harness$",
-			"^tests$",
-			"^test-results$",
-			"^temp$",
-			"^server(?:-.*)?\.json$",
-			"^.*\.code-workspace$",
-			"^(AGENTS|CLAUDE|DEVNOTES|RELEASE)\.md$",
-			"\.bak$",
-			"\.(zip|tar|tar\.gz|tgz|7z|rar)$"
-		];
-
-		if ( arguments.projectType == "module" ) {
-			return [
-				"^build$",
-				"^modules$",
-				"^node_modules$",
-				"^resources$",
-				"^test-harness$",
-				"^tests$",
-				"^test-results$",
-				"^temp$",
-				"^plans$",
-				"^(package|package-lock)\.json$",
-				"^webpack\.config\.js$",
-				"^(vite|vitest)\.config\.js$",
-				"^docker-compose\.yml$",
-				"^server(?:-.*)?\.json$",
-				"^.*\.code-workspace$",
-				"^(AGENTS|CLAUDE|DEVNOTES|RELEASE)\.md$",
-				"\.bak$",
-				"\.(zip|tar|tar\.gz|tgz|7z|rar)$",
-				"^\..*"
-			];
-		}
-
-		// Applications may need these two hidden paths at runtime. Everything else hidden is
-		// treated as local tooling or potentially sensitive configuration.
-		common.append( "^\.(?!(?:htaccess|well-known)$).*" );
-		return common;
-	}
-
-	/**
-	 * detectBranch
-	 *
 	 * Uses Gitflow's configured production branch when present. Otherwise reads the current
 	 * symbolic branch through git, which also works in linked worktrees, and falls back to main
 	 * for a detached checkout or a folder without usable git metadata.
@@ -315,8 +229,6 @@ component {
 	}
 
 	/**
-	 * detectChangelogName
-	 *
 	 * Returns the name of the changelog the project already has, spelled exactly as it is on
 	 * disk. Falls back to CHANGELOG.md, which is the usual spelling.
 	 *
@@ -336,31 +248,15 @@ component {
 	}
 
 	/**
-	 * detectTestRunner
+	 * Returns the test runner detected by ProjectSettingsService.
 	 *
-	 * Takes the test runner URL from box.json's testbox entry, which most projects already
-	 * have. Falls back to a placeholder to be corrected by hand.
-	 *
-	 * @box The parsed box.json.
+	 * @box The parsed box.json. This wrapper remains private to keep file detection readable.
 	 */
 	private string function detectTestRunner( required struct box ){
-		var runner = ( arguments.box.testbox.runner ?: "" );
-		if ( isArray( runner ) && arrayLen( runner ) ) {
-			runner = isStruct( runner[ 1 ] ) ? ( runner[ 1 ].default ?: "" ) : runner[ 1 ];
-		} else if ( isStruct( runner ) ) {
-			for ( var key in runner ) {
-				runner = runner[ key ];
-				break;
-			}
-		}
-		return isSimpleValue( runner ) && len( trim( runner ) )
-			? trim( runner )
-			: "http://127.0.0.1:60299/tests/runner.cfm";
+		return variables.projectSettings.detectTestRunner( arguments.box );
 	}
 
 	/**
-	 * detectEngines
-	 *
 	 * Finds the server json files in the project root and turns them into engine entries, with
 	 * a readable name worked out from each file name.
 	 */
@@ -379,72 +275,26 @@ component {
 	}
 
 	/**
-	 * engineName
-	 *
-	 * Prefers app.cfengine from the server file, then its name, then a readable version of the
-	 * filename. A malformed file is still included so installation never silently loses a
-	 * server the user expected to test.
+	 * Reads one server file and asks ProjectSettingsService to choose its display name.
+	 * A malformed file still appears in the generated settings with a name based on its file.
 	 *
 	 * @file The server json file name.
 	 */
 	private string function engineName( required string file ){
+		var serverSettings = {};
 		try {
-			var serverSettings = deserializeJSON( fileRead( variables.root & "/" & arguments.file ) );
-			if ( isStruct( serverSettings ) ) {
-				var cfengine = "";
-				if (
-					structKeyExists( serverSettings, "app" )
-					&& isStruct( serverSettings.app )
-					&& structKeyExists( serverSettings.app, "cfengine" )
-				) {
-					cfengine = serverSettings.app.cfengine;
-				}
-				if ( isSimpleValue( cfengine ) && len( trim( cfengine ) ) ) {
-					return readableEngineName( trim( cfengine ) );
-				}
-
-				var serverName = structKeyExists( serverSettings, "name" ) ? serverSettings.name : "";
-				if ( isSimpleValue( serverName ) && len( trim( serverName ) ) ) {
-					return trim( serverName );
-				}
-			}
-		} catch ( any e ) {
-			// The server command owns validation. Keep the file in the generated list and give
-			// it a useful fallback name so the later error identifies the right configuration.
+			var parsedSettings = deserializeJSON( fileRead( variables.root & "/" & arguments.file ) );
+			serverSettings = isStruct( parsedSettings ) ? parsedSettings : {};
+		} catch ( any ignoredException ) {
+			// The server command will report invalid JSON when someone starts this server.
 		}
 
-		var name = reReplaceNoCase( arguments.file, "^server-?", "" );
-		name     = reReplaceNoCase( name, "\.json$", "" );
-		return len( trim( name ) ) ? readableEngineName( name ) : "Server";
+		return variables.projectSettings.engineName( arguments.file, serverSettings );
 	}
 
-	/**
-	 * readableEngineName
-	 *
-	 * Turns a value such as lucee@5 or boxlang-cfml@1 into Lucee 5 or Boxlang 1.
-	 *
-	 * @value A CommandBox engine ID or filename stem.
-	 */
-	private string function readableEngineName( required string value ){
-		var name = arguments.value;
-		// Drop the word that only says which language flavour it runs, so
-		// server-boxlang-cfml@1.json reads as "Boxlang 1" rather than "Boxlang Cfml 1".
-		name     = reReplaceNoCase( name, "[-_]cfml\b", "" );
-		name     = replace( name, "@", " ", "all" );
-		name     = replace( name, "-", " ", "all" );
-		// Capitalise each word, so "lucee 5" reads as "Lucee 5".
-		var words = listToArray( name, " " );
-		for ( var i = 1; i <= arrayLen( words ); i++ ) {
-			words[ i ] = uCase( left( words[ i ], 1 ) ) & mid( words[ i ], 2, len( words[ i ] ) );
-		}
-		return arrayToList( words, " " );
-	}
-
-	/********************************************* HELPERS *********************************************/
+	// OUTPUT HELPERS
 
 	/**
-	 * formatJSON
-	 *
 	 * Turns a struct into readable JSON. CommandBox's own formatter is used when available so
 	 * the result matches how it writes box.json.
 	 *
@@ -454,14 +304,12 @@ component {
 		var json = serializeJSON( arguments.data );
 		try {
 			return formatterUtil.formatJSON( json );
-		} catch ( any e ) {
+		} catch ( any ignoredException ) {
 			return json;
 		}
 	}
 
 	/**
-	 * defaultChangelog
-	 *
 	 * The starter changelog, used when the templates folder is missing.
 	 */
 	private string function defaultChangelog(){

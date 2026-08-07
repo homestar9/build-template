@@ -1,52 +1,31 @@
 /**
- * Builds and checks the release package.
+ * Builds and checks the package that can be published.
  *
- * Run it with: box run-script build:package
+ * Run `box run-script build:package` from the project root. The task runs the tests, copies
+ * allowed source files into a clean staging folder, replaces version tokens, creates a ZIP,
+ * verifies the ZIP, and writes checksum files.
  *
- * What it does, in order: run the test suite, copy the source into a staging folder minus
- * anything excluded, stamp the version, zip it, count the files to prove nothing went missing,
- * and write checksums. Everything it produces lands in .artifacts/<slug>/<version>/.
- *
- * Settings come from build/build.json. You should not need to edit this file.
+ * Build files are written under .artifacts/<slug>/<version>/. Use `:skipTests=true` only when
+ * the same source has already passed its tests. Project settings come from build/build.json.
  */
 component {
 
-	/**
-	 * init
-	 *
-	 * Loads the settings and empties the output folders.
-	 */
+	/** Loads the settings and prepares empty staging and artifact folders. */
 	function init(){
 		variables.config = new BuildConfig( getDirectoryFromPath( getCurrentTemplatePath() ) );
-		variables.s      = variables.config.getSettings();
+		variables.settings = variables.config.getSettings();
 		variables.root   = variables.config.getRoot();
 
-		variables.buildDir     = variables.root & "/" & variables.s.stagingDir;
-		variables.artifactsDir = variables.root & "/" & variables.s.artifactsDir;
+		variables.buildDir     = variables.root & "/" & variables.settings.stagingDir;
+		variables.artifactsDir = variables.root & "/" & variables.settings.artifactsDir;
 
-		// Start both folders empty so a build can never include leftovers from the last one.
-		[ variables.buildDir, variables.artifactsDir ].each( function( item ){
-			if ( directoryExists( item ) ) {
-				directoryDelete( item, true );
-			}
-			directoryCreate( item, true, true );
-		} );
-
-		// Point a "coldbox" mapping at the installed framework, which some projects need in
-		// order to load their own code during a build. Skipped when the folder is not there.
-		if ( len( trim( variables.s.coldboxMapping ) ) ) {
-			var coldboxPath = variables.root & "/" & variables.s.coldboxMapping;
-			if ( directoryExists( coldboxPath ) ) {
-				fileSystemUtil.createMapping( "coldbox", coldboxPath );
-			}
-		}
+		prepareOutputDirectories();
+		configureColdBoxMapping();
 
 		return this;
 	}
 
 	/**
-	 * run
-	 *
 	 * Runs the tests, builds the package, and writes checksums.
 	 *
 	 * @projectName The name used for the package folder and zip. Defaults to the box.json slug.
@@ -65,8 +44,8 @@ component {
 	){
 		fillDefaults( arguments );
 
-		if ( arguments.skipTests || !variables.s.runTests ) {
-			var reason = arguments.skipTests ? "asked for with skipTests" : "turned off in build.json";
+		if ( arguments.skipTests || !variables.settings.runTests ) {
+			var reason = arguments.skipTests ? "requested with skipTests" : "disabled in build.json";
 			print
 				.line()
 				.boldYellowLine( "WARNING: the test suite was skipped (#reason#)." )
@@ -88,15 +67,13 @@ component {
 	}
 
 	/**
-	 * runTests
-	 *
 	 * Runs the test suite and stops the build when anything fails.
 	 */
 	function runTests(){
 		print.blueLine( "Running the test suite, please wait..." ).toConsole();
 
 		command( "testbox run" )
-			.params( runner = variables.s.testRunner, verbose = false )
+			.params( runner = variables.settings.testRunner, verbose = false )
 			.run();
 
 		if ( shell.getExitCode() ) {
@@ -105,10 +82,7 @@ component {
 	}
 
 	/**
-	 * buildSource
-	 *
-	 * Copies the source into the staging folder, stamps the version, zips it, and checks the
-	 * zip holds everything.
+	 * Creates and verifies the source package without running the test suite.
 	 *
 	 * @projectName The name used for the package folder and zip.
 	 * @version     The version being built.
@@ -137,17 +111,58 @@ component {
 		variables.projectBuildDir = variables.buildDir & "/#arguments.projectName#";
 		directoryCreate( variables.projectBuildDir, true, true );
 
+		copySourceToStaging();
+		writeBuildMarker( argumentCollection = arguments );
+		replaceBuildTokens( argumentCollection = arguments );
+
+		var zipPath = createPackageZip( arguments.projectName, arguments.version );
+		verifyZip( zipPath );
+		copyPackageManifest();
+	}
+
+	// BUILD STEPS
+
+	private void function prepareOutputDirectories(){
+		for ( var directoryPath in [ variables.buildDir, variables.artifactsDir ] ) {
+			if ( directoryExists( directoryPath ) ) {
+				directoryDelete( directoryPath, true );
+			}
+			directoryCreate( directoryPath, true, true );
+		}
+	}
+
+	private void function configureColdBoxMapping(){
+		if ( !len( trim( variables.settings.coldboxMapping ) ) ) {
+			return;
+		}
+
+		var coldboxPath = variables.root & "/" & variables.settings.coldboxMapping;
+		if ( directoryExists( coldboxPath ) ) {
+			fileSystemUtil.createMapping( "coldbox", coldboxPath );
+		}
+	}
+
+	private void function copySourceToStaging(){
 		print.blueLine( "Copying source into the staging folder..." ).toConsole();
 		copy( variables.root, variables.projectBuildDir );
+	}
 
-		// Leave a note naming the commit this package was built from.
+	private void function writeBuildMarker(
+		required string projectName,
+		required string version,
+		required string buildID
+	){
 		fileWrite(
 			"#variables.projectBuildDir#/#arguments.projectName#-#arguments.version#+#arguments.buildID#",
 			"Built from commit #arguments.buildID# on #dateTimeFormat( now(), "full" )#"
 		);
+	}
 
-		// Swap placeholder tokens for the real version and build identifier. A build from the
-		// release branch is stamped with the identifier; anything else is marked a snapshot.
+	private void function replaceBuildTokens(
+		required string version,
+		required string buildID,
+		required string branch
+	){
 		print.greenLine( "Stamping version #arguments.version#" ).toConsole();
 		command( "tokenReplace" )
 			.params(
@@ -157,37 +172,38 @@ component {
 			)
 			.run();
 
-		var isReleaseBranch = ( arguments.branch == variables.s.branch );
+		var isReleaseBranch = arguments.branch == variables.settings.branch;
 		print.greenLine( "Stamping build identifier #arguments.buildID#" ).toConsole();
 		command( "tokenReplace" )
 			.params(
 				path        = "#variables.projectBuildDir#/**",
-				token       = ( isReleaseBranch ? "@build.number@" : "+@build.number@" ),
-				replacement = ( isReleaseBranch ? arguments.buildID : "-snapshot" )
+				token       = isReleaseBranch ? "@build.number@" : "+@build.number@",
+				replacement = isReleaseBranch ? arguments.buildID : "-snapshot"
 			)
 			.run();
+	}
 
-		var destination = "#variables.exportsDir#/#arguments.projectName#-#arguments.version#.zip";
-		print.greenLine( "Zipping to #destination#" ).toConsole();
+	private string function createPackageZip( required string projectName, required string version ){
+		var zipPath = "#variables.exportsDir#/#arguments.projectName#-#arguments.version#.zip";
+		print.greenLine( "Zipping to #zipPath#" ).toConsole();
 		cfzip(
 			action    = "zip",
-			file      = "#destination#",
-			source    = "#variables.projectBuildDir#",
+			file      = zipPath,
+			source    = variables.projectBuildDir,
 			overwrite = true,
 			recurse   = true
 		);
+		return zipPath;
+	}
 
-		verifyZip( destination );
-
-		// Put a copy of box.json beside the zip so you can read what shipped without unzipping.
+	private void function copyPackageManifest(){
+		// This copy lets someone inspect the published metadata without opening the ZIP.
 		fileCopy( "#variables.projectBuildDir#/box.json", variables.exportsDir );
 	}
 
-	/********************************************* PRIVATE HELPERS *********************************************/
+	// SHARED HELPERS
 
 	/**
-	 * fillDefaults
-	 *
 	 * Fills in any argument left blank: the slug and version from box.json, the branch and
 	 * commit from git. Doing it here means every entry point behaves the same way.
 	 *
@@ -209,8 +225,6 @@ component {
 	}
 
 	/**
-	 * getCurrentBranch
-	 *
 	 * Reads the current branch from .git/HEAD without needing the git program. Falls back to
 	 * the release branch from build.json when HEAD cannot be read, which happens when building
 	 * from a copy with no .git folder.
@@ -218,19 +232,17 @@ component {
 	private string function getCurrentBranch(){
 		var headFile = variables.root & "/.git/HEAD";
 		if ( !fileExists( headFile ) ) {
-			return variables.s.branch;
+			return variables.settings.branch;
 		}
 		var head = trim( fileRead( headFile ) );
 		if ( left( head, 16 ) == "ref: refs/heads/" ) {
 			return replace( head, "ref: refs/heads/", "" );
 		}
 		// A detached HEAD holds a commit hash, not a branch name.
-		return variables.s.branch;
+		return variables.settings.branch;
 	}
 
 	/**
-	 * getCurrentCommit
-	 *
 	 * Reads the short commit hash HEAD points at, straight from the .git folder so the git
 	 * program is not needed and it still works from an extracted copy. Returns "nocommit" when
 	 * there is nothing to read.
@@ -240,24 +252,24 @@ component {
 		if ( !fileExists( headFile ) ) {
 			return "nocommit";
 		}
-		var head = trim( fileRead( headFile ) );
-		var sha  = "";
+		var head       = trim( fileRead( headFile ) );
+		var commitHash = "";
 
 		if ( left( head, 5 ) == "ref: " ) {
 			// The usual case: HEAD names a branch, and the hash sits in .git/<ref>, or in
 			// .git/packed-refs once git has tidied it away.
-			var ref     = trim( mid( head, 6, len( head ) ) );
-			var refFile = variables.root & "/.git/" & ref;
-			if ( fileExists( refFile ) ) {
-				sha = trim( fileRead( refFile ) );
+			var gitReference  = trim( mid( head, 6, len( head ) ) );
+			var referenceFile = variables.root & "/.git/" & gitReference;
+			if ( fileExists( referenceFile ) ) {
+				commitHash = trim( fileRead( referenceFile ) );
 			} else {
 				var packedFile = variables.root & "/.git/packed-refs";
 				if ( fileExists( packedFile ) ) {
-					for ( var rawLine in listToArray( fileRead( packedFile ), chr( 10 ) ) ) {
-						var line = trim( rawLine );
+					for ( var packedReferenceLine in listToArray( fileRead( packedFile ), chr( 10 ) ) ) {
+						var line = trim( packedReferenceLine );
 						// Each line reads "<hash> <ref>". Skip comments and peeled tag lines.
-						if ( len( line ) && left( line, 1 ) != "##" && left( line, 1 ) != "^" && right( line, len( ref ) ) == ref ) {
-							sha = listFirst( line, " " );
+						if ( len( line ) && left( line, 1 ) != "##" && left( line, 1 ) != "^" && right( line, len( gitReference ) ) == gitReference ) {
+							commitHash = listFirst( line, " " );
 							break;
 						}
 					}
@@ -265,15 +277,13 @@ component {
 			}
 		} else {
 			// A detached HEAD already holds the hash.
-			sha = head;
+			commitHash = head;
 		}
 
-		return len( sha ) ? left( sha, 7 ) : "nocommit";
+		return len( commitHash ) ? left( commitHash, 7 ) : "nocommit";
 	}
 
 	/**
-	 * ensureTestRunnerReachable
-	 *
 	 * Stops the build with a clear message when the test server is not answering. Kept separate
 	 * from runTests() so "the server is not running" never reads as "your tests failed".
 	 *
@@ -292,7 +302,7 @@ component {
 				redirect     = false,
 				result       = "local.httpResult"
 			);
-		} catch ( any e ) {
+		} catch ( any ignoredException ) {
 			httpResult = { statuscode : "0" };
 		}
 		// Anything in the 200s or 300s means the site answered.
@@ -307,8 +317,6 @@ component {
 	}
 
 	/**
-	 * buildChecksums
-	 *
 	 * Writes SHA-512 and MD5 files next to the zip so anyone can confirm a download is intact.
 	 */
 	private function buildChecksums(){
@@ -332,8 +340,6 @@ component {
 	}
 
 	/**
-	 * verifyZip
-	 *
 	 * Stops the build when the zip holds fewer files than the staging folder.
 	 *
 	 * This is deliberately simple: it counts files rather than working out what went wrong.
@@ -372,8 +378,6 @@ component {
 	}
 
 	/**
-	 * copy
-	 *
 	 * Copies the project into the staging folder, leaving out anything the excludes match.
 	 * Written by hand because directoryCopy with a filter is unreliable on Lucee.
 	 *
@@ -416,8 +420,6 @@ component {
 	}
 
 	/**
-	 * relativeName
-	 *
 	 * Turns a full path into its name relative to the project root, for example
 	 * "models" or "box.json".
 	 *
@@ -437,8 +439,6 @@ component {
 	}
 
 	/**
-	 * ensureExportDir
-	 *
 	 * Creates .artifacts/<name>/<version>/ and remembers it for the rest of the build.
 	 *
 	 * @projectName The package name.

@@ -31,8 +31,10 @@ project, because this text becomes the release notes.
 box run-script test:engines
 ```
 
-Runs the whole suite on each engine in turn. It takes a while, so it is a separate step. Skip
-it if your project only supports one engine.
+Runs the whole suite on each engine in turn. A failed engine does not prevent the remaining
+engines from running. The final command still fails when any engine failed. This check can take
+a while, so it stays separate from the release command. Skip it when the project supports only
+one engine.
 
 ### 3. Raise the version
 

@@ -15,10 +15,21 @@
     "bugs":"https://github.com/homestar9/build-template/issues",
     "shortDescription":"A drop-in build and release kit for CFML projects: test, bump, build, publish to ForgeBox, tag, and create a GitHub Release with one command each.",
     "contributors":[],
+    "scripts":{
+        "test:build-kit":"task run taskFile=tests/Run.cfc"
+    },
+    "devDependencies":{
+        "testbox":"7.0.0+19"
+    },
     "ignore":[
         "**/.*",
         "/test/",
+        "/tests/",
+        "/testbox/",
         "/AGENTS.md",
         "/CLAUDE.md"
-    ]
+    ],
+    "installPaths":{
+        "testbox":"testbox/"
+    }
 }

@@ -281,7 +281,8 @@ Run the configured list with:
 box run-script test:engines
 ```
 
-The engines run one at a time and the command stops at the first failure.
+The engines run one at a time. Every engine still runs after a failure. The final report lists
+all results, and the command returns an error when any engine failed.
 
 ## Common problems
 
@@ -296,6 +297,23 @@ The engines run one at a time and the command stops at the first failure.
 
 Start with `box run-script release:check` when you are unsure. It reports all readiness
 problems without changing the project.
+
+## Develop the build kit
+
+Install the development dependencies and run the build-kit tests:
+
+```bash
+box install
+box run-script test:build-kit
+```
+
+The test command runs TestBox inside CommandBox. It does not need a web server. Unit tests cover
+the version, changelog, configuration, and project-detection rules. Integration tests copy the
+build kit into ignored `.test-work/` projects and use a local Git remote. The tests never
+publish to ForgeBox or GitHub.
+
+The public task components stay in `build/`. Pure rules that do not need CommandBox live in
+`build/lib/`. Keeping those rules separate makes the release workflow easier to read and test.
 
 ## More information
 
