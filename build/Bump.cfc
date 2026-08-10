@@ -27,8 +27,15 @@ component {
 	 * @preid  The prerelease label to use, such as beta or alpha. Only used by the pre levels.
 	 *         Defaults to beta when starting a prerelease.
 	 * @dryRun Show what would change without writing anything.
+	 * @allowPrereleaseRetarget Allow preminor to move an active prerelease to the next minor
+	 *                          version. Defaults to false to prevent accidental retargeting.
 	 */
-	function run( string level = "patch", string preid = "", boolean dryRun = false ){
+	function run(
+		string level = "patch",
+		string preid = "",
+		boolean dryRun = false,
+		boolean allowPrereleaseRetarget = false
+	){
 		var requestedLevel = lCase( trim( arguments.level ) );
 		if ( !listFindNoCase( variables.versionService.supportedLevels(), requestedLevel ) ) {
 			return fail(
@@ -45,6 +52,21 @@ component {
 		}
 
 		var currentVersion = variables.config.version();
+		var currentParts   = variables.versionService.parseVersion( currentVersion );
+		if (
+			requestedLevel == "preminor"
+			&& len( currentParts.prerelease )
+			&& !arguments.allowPrereleaseRetarget
+		) {
+			return fail(
+				"#currentVersion# is already a prerelease, so preminor was stopped before it could target the next minor version.",
+				[
+					"box run-script bump:prerelease              advance the current prerelease",
+					":allowPrereleaseRetarget=true               deliberately target the next minor prerelease"
+				],
+				"Choose the intended prerelease action"
+			);
+		}
 		var newVersion     = currentVersion;
 		var releaseDate    = dateFormat( now(), "yyyy-mm-dd" );
 		var newChangelog   = "";

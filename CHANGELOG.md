@@ -7,6 +7,13 @@ and the version numbers follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
+## [1.4.2] - 2028-08-10
+
+### Changed
+
+- `bump:beta`, `bump:alpha`, and direct `preminor` calls now refuse to retarget an active
+  prerelease unless `:allowPrereleaseRetarget=true` is supplied explicitly.
+
 ## [1.4.1] - 2028-08-07
 
 - Updated logo

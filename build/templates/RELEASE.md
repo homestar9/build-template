@@ -87,8 +87,14 @@ box task run taskFile=build/Bump.cfc :level=preminor     # 1.1.0 -> 1.2.0-beta.1
 box task run taskFile=build/Bump.cfc :level=premajor     # 1.1.0 -> 2.0.0-beta.1
 ```
 
-Add `:preid=rc` to use a different label. Switching label restarts the count, so
-`1.2.0-alpha.7` with `:preid=beta` becomes `1.2.0-beta.1`.
+Starting the next minor prerelease is refused while any prerelease is active. This protects
+`1.2.0-beta.3`, for example, from accidentally becoming `1.3.0-beta.1`. Advance the active
+prerelease with `bump:prerelease`. To retarget it deliberately, add
+`:allowPrereleaseRetarget=true` to a direct `preminor` task call.
+
+Add `:preid=rc` to a direct start command to use a different label. To switch the label of an
+active prerelease without changing its core version, use `:level=prerelease` with the new
+`:preid`; switching `1.2.0-alpha.7` to beta produces `1.2.0-beta.1`.
 
 A prerelease is flagged as one on GitHub automatically, because the version contains a hyphen.
 
@@ -98,7 +104,7 @@ Every level, for reference:
 | --- | --- |
 | `patch`, `minor`, `major` | Raise the version. On a prerelease, settle on the version it was leading up to. |
 | `prerelease` | Step an existing prerelease forward, `beta.3` to `beta.4`. |
-| `prepatch`, `preminor`, `premajor` | Start a prerelease. Uses `:preid=beta` unless you say otherwise. |
+| `prepatch`, `preminor`, `premajor` | Start a prerelease. Uses `:preid=beta` unless you say otherwise. `preminor` refuses to retarget an active prerelease without `:allowPrereleaseRetarget=true`. |
 | `none` | Keep the version and just date the changelog. |
 
 ### 4. Check and commit
@@ -333,6 +339,7 @@ box task run taskFile=build/Release.cfc target=github :version=1.0.1 :existingTa
 | `has no "## [1.0.1]" section` | Run a `bump:` command to move your notes into a dated section. |
 | `The "## [Unreleased]" section is empty` | Write your release notes first. Nothing was changed. |
 | `is not a prerelease, so there is nothing to step forward` | Use `bump:beta` to start one, not `bump:prerelease`. |
+| `is already a prerelease, so preminor was stopped` | Use `bump:prerelease`, or add `:allowPrereleaseRetarget=true` when retargeting is deliberate. |
 | `Tag v1.0.1 already exists` | That version is already released. Raise the version. |
 | `Tag v1.0.1 already exists on origin` | Fetch tags and choose a version that has not already been published. |
 | `Tag v1.0.1 does not point at the checked-out commit` | A tag-triggered build checked out the wrong source. Check the workflow ref and version. |

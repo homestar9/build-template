@@ -38,6 +38,10 @@ component extends="testbox.system.BaseSpec" {
 				var settings    = deserializeJSON( fileRead( fixtureRoot & "/build/build.json" ) );
 				expect( packageData.scripts.release ).toBe( "keep this command" );
 				expect( packageData.scripts ).toHaveKey( "build:package" );
+				expect( packageData.scripts[ "bump:beta" ] )
+					.toBe( "task run taskFile=build/Bump.cfc :level=preminor :preid=beta" );
+				expect( packageData.scripts[ "bump:alpha" ] )
+					.toBe( "task run taskFile=build/Bump.cfc :level=preminor :preid=alpha" );
 				expect( settings.projectType ).toBe( "module" );
 				expect( settings.testRunner ).toBe( "http://127.0.0.1:61000/tests/runner.cfm" );
 				expect( settings.engines[ 1 ].name ).toBe( "Lucee 5" );
@@ -84,6 +88,67 @@ component extends="testbox.system.BaseSpec" {
 				expectCommand( bump, "Bump.cfc" );
 				expect( deserializeJSON( fileRead( fixtureRoot & "/box.json" ) ).version ).toBe( "1.2.4" );
 				expect( fileRead( fixtureRoot & "/CHANGELOG.md" ) ).toInclude( versionHeading( "1.2.4" ) );
+			} );
+
+			it( "guards the beta and alpha preminor calls from retargeting an active prerelease", function(){
+				for ( var preid in [ "beta", "alpha" ] ) {
+					writeBasicProject( "1.2.0-#preid#.3" );
+					writeChangelog( true );
+					var packageBefore   = fileRead( fixtureRoot & "/box.json" );
+					var changelogBefore = fileRead( fixtureRoot & "/CHANGELOG.md" );
+
+					var guardedBump = fixtureProcess.runBox(
+						fixtureRoot,
+						[ "task", "run", "taskFile=build/Bump.cfc", ":level=preminor", ":preid=#preid#" ]
+					);
+
+					expect( guardedBump.exitCode ).notToBe( 0 );
+					expect( guardedBump.output ).toInclude( "box run-script bump:prerelease" );
+					expect( fileRead( fixtureRoot & "/box.json" ) ).toBe( packageBefore );
+					expect( fileRead( fixtureRoot & "/CHANGELOG.md" ) ).toBe( changelogBefore );
+				}
+			} );
+
+			it( "guards direct preminor calls and permits an explicit retarget", function(){
+				writeBasicProject( "1.2.0-rc.2" );
+				writeChangelog( true );
+				var packageBefore   = fileRead( fixtureRoot & "/box.json" );
+				var changelogBefore = fileRead( fixtureRoot & "/CHANGELOG.md" );
+
+				var guardedBump = fixtureProcess.runBox(
+					fixtureRoot,
+					[ "task", "run", "taskFile=build/Bump.cfc", ":level=preminor", ":preid=beta" ]
+				);
+				expect( guardedBump.exitCode ).notToBe( 0 );
+				expect( guardedBump.output ).toInclude( "allowPrereleaseRetarget=true" );
+				expect( fileRead( fixtureRoot & "/box.json" ) ).toBe( packageBefore );
+				expect( fileRead( fixtureRoot & "/CHANGELOG.md" ) ).toBe( changelogBefore );
+
+				var allowedBump = fixtureProcess.runBox(
+					fixtureRoot,
+					[
+						"task", "run", "taskFile=build/Bump.cfc", ":level=preminor", ":preid=beta",
+						":allowPrereleaseRetarget=true"
+					]
+				);
+				expectCommand( allowedBump, "the explicit prerelease retarget" );
+				expect( deserializeJSON( fileRead( fixtureRoot & "/box.json" ) ).version )
+					.toBe( "1.3.0-beta.1" );
+			} );
+
+			it( "starts beta and alpha prereleases from a stable version", function(){
+				for ( var preid in [ "beta", "alpha" ] ) {
+					writeBasicProject( "1.0.0" );
+					writeChangelog( true );
+
+					var bump = fixtureProcess.runBox(
+						fixtureRoot,
+						[ "task", "run", "taskFile=build/Bump.cfc", ":level=preminor", ":preid=#preid#" ]
+					);
+					expectCommand( bump, "the stable #preid# bump" );
+					expect( deserializeJSON( fileRead( fixtureRoot & "/box.json" ) ).version )
+						.toBe( "1.1.0-#preid#.1" );
+				}
 			} );
 
 			it( "builds a checked ZIP with tokens and exclusions", function(){

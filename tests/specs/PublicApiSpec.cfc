@@ -24,7 +24,8 @@ component extends="testbox.system.BaseSpec" {
 					.toBe( "projectName,version,buildID,branch,skipTests" );
 				expect( functionArgumentNames( "build.Build", "buildSource" ) )
 					.toBe( "projectName,version,buildID,branch,skipTests" );
-				expect( functionArgumentNames( "build.Bump", "run" ) ).toBe( "level,preid,dryRun" );
+				expect( functionArgumentNames( "build.Bump", "run" ) )
+					.toBe( "level,preid,dryRun,allowPrereleaseRetarget" );
 				expect( functionArgumentNames( "build.Install", "run" ) ).toBe( "force" );
 				expect( functionArgumentNames( "build.Release", "run" ) )
 					.toBe( "version,dryRun,skipTests,existingTag,buildID" );
@@ -52,6 +53,7 @@ component extends="testbox.system.BaseSpec" {
 				expect( argumentDefault( "build.Bump", "run", "level" ) ).toBe( "patch" );
 				expect( argumentDefault( "build.Bump", "run", "preid" ) ).toBe( "" );
 				expect( argumentDefault( "build.Bump", "run", "dryRun" ) ).toBeFalse();
+				expect( argumentDefault( "build.Bump", "run", "allowPrereleaseRetarget" ) ).toBeFalse();
 				expect( argumentDefault( "build.Install", "run", "force" ) ).toBeFalse();
 
 				expectStringDefaults(
