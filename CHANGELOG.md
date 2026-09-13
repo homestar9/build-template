@@ -7,6 +7,28 @@ and the version numbers follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-13
+
+### Added
+
+- `build-kit:update` (`build/Update.cfc`) brings a project's copy of the kit up to date. It
+  downloads the latest build-template release, or takes `:source=<folder or zip>`, replaces the
+  kit files under `build/` without touching `build/build.json`, adds new box.json scripts,
+  records the kit version, and prints the template changelog since the version the project
+  was on. `:version=` picks a release and `:dryRun=true` only lists the changes.
+- `build/build-kit.json` records the kit version and repository. The installer now stamps the
+  real kit version into `templateVersion` instead of `1.0.0`.
+- `release:check` reports whether the release tag is already on origin.
+
+### Changed
+
+- `release:existing-tag` checks origin during preflight, pushes a tag that exists only locally
+  right before creating the GitHub Release, and refuses when origin holds the tag at a
+  different commit. A tag left unpushed after a Gitflow finish used to fail the release at its
+  last step, after the ForgeBox publish.
+- The box.json script list moved into `build/lib/PackageScriptService.cfc`, shared by the
+  install and update tasks.
+
 ## [1.4.2] - 2028-08-10
 
 ### Changed

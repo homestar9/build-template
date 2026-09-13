@@ -8,6 +8,11 @@
  * The order protects the release. Every safe check runs before the first permanent publish.
  * If a later step fails, the task prints the commands needed to finish the same release.
  * Use `release:dryrun` to build and check without publishing, tagging, or pushing.
+ *
+ * Existing-tag mode (`release:existing-tag`) publishes a tag another tool created, such as a
+ * Gitflow finish. It never creates or moves that tag, but when origin does not have it yet
+ * the task pushes it right before creating the GitHub Release, so a tag that was only pushed
+ * locally cannot fail the release at its last step.
  */
 component {
 
@@ -111,12 +116,19 @@ component {
 		checkWorkingTree( repositoryStatus, arguments.dryRun );
 		var branchName = checkReleaseBranch( arguments.existingTag, arguments.dryRun );
 
-		var tagName = variables.settings.tagPrefix & releaseVersion;
-		checkVersionTag( tagName, arguments.existingTag );
+		var tagName   = variables.settings.tagPrefix & releaseVersion;
+		var remoteTag = checkVersionTag( tagName, arguments.existingTag );
 		checkReleaseChangelog( releaseVersion );
 		checkGitHubCli( arguments.dryRun );
 
-		printPreflightSummary( branchName, releaseVersion, tagName, arguments.dryRun, arguments.existingTag );
+		printPreflightSummary(
+			branchName,
+			releaseVersion,
+			tagName,
+			arguments.dryRun,
+			arguments.existingTag,
+			remoteTag.status
+		);
 	}
 
 	// PREFLIGHT CHECKS
@@ -173,44 +185,70 @@ component {
 		return branchName;
 	}
 
-	private void function checkVersionTag( required string tagName, required boolean existingTag ){
+	/**
+	 * Checks the release tag locally and on origin. Returns the origin state from
+	 * remoteTagState() so the summary can say whether the tag still has to be pushed.
+	 */
+	private struct function checkVersionTag( required string tagName, required boolean existingTag ){
 		if ( arguments.existingTag ) {
 			requireExistingTagAtHead( arguments.tagName );
-		} else {
-			var tagCheck = variables.config.execNative( "git", [ "rev-parse", "-q", "--verify", "refs/tags/" & arguments.tagName ] );
-			if ( tagCheck.exitCode == 0 ) {
-				var tagCommit  = variables.config.execNative( "git", [ "rev-list", "-n", "1", "refs/tags/" & arguments.tagName ] );
-				var headCommit = variables.config.execNative( "git", [ "rev-parse", "HEAD" ] );
-				if (
-					tagCommit.exitCode == 0
-						&& headCommit.exitCode == 0
-						&& trim( tagCommit.output ) == trim( headCommit.output )
-				) {
-					return error(
-						"Tag #arguments.tagName# already exists at this commit. If Gitflow or GitKraken created it "
-						& "intentionally, publish it with: box run-script release:existing-tag"
-					);
-				}
-				return error(
-					"Tag #arguments.tagName# already exists locally at a different commit. Do not move a published tag. "
-					& "Verify the tag and release history, or choose a new version."
-				);
-			}
-			var remoteTag = variables.config.execNative(
-				"git",
-				[ "ls-remote", "--exit-code", "--tags", "origin", "refs/tags/" & arguments.tagName ]
-			);
-			if ( remoteTag.exitCode == 0 ) {
-				return error(
-					"Tag #arguments.tagName# already exists on origin. Fetch tags first. If a Gitflow tool created it "
-					& "for this release, run box run-script release:existing-tag from its tagged production "
-					& "commit; otherwise the version is already claimed."
-				);
-			}
-			if ( remoteTag.exitCode != 2 ) {
-				return error( "Could not check origin for tag #arguments.tagName# (#remoteTag.output#). Nothing has been published." );
-			}
+			return checkExistingTagOnOrigin( arguments.tagName );
 		}
+
+		var tagCheck = variables.config.execNative( "git", [ "rev-parse", "-q", "--verify", "refs/tags/" & arguments.tagName ] );
+		if ( tagCheck.exitCode == 0 ) {
+			var tagCommit = variables.config.execNative( "git", [ "rev-list", "-n", "1", "refs/tags/" & arguments.tagName ] );
+			if ( tagCommit.exitCode == 0 && trim( tagCommit.output ) == headCommit() ) {
+				return error(
+					"Tag #arguments.tagName# already exists at this commit. If Gitflow or GitKraken created it "
+					& "intentionally, publish it with: box run-script release:existing-tag"
+				);
+			}
+			return error(
+				"Tag #arguments.tagName# already exists locally at a different commit. Do not move a published tag. "
+				& "Verify the tag and release history, or choose a new version."
+			);
+		}
+
+		var remoteTag = remoteTagState( arguments.tagName );
+		if ( remoteTag.status == "present" ) {
+			return error(
+				"Tag #arguments.tagName# already exists on origin. Fetch tags first. If a Gitflow tool created it "
+				& "for this release, run box run-script release:existing-tag from its tagged production "
+				& "commit; otherwise the version is already claimed."
+			);
+		}
+		if ( remoteTag.status == "unknown" ) {
+			return error( "Could not check origin for tag #arguments.tagName# (#remoteTag.output#). Nothing has been published." );
+		}
+		return remoteTag;
+	}
+
+	/**
+	 * Existing-tag mode: the tag is already proven to sit at HEAD, so this decides what origin
+	 * knows about it. A tag origin has never seen is fine and gets pushed later. A tag origin
+	 * holds at a different commit is refused, because moving a published tag breaks everyone
+	 * who already fetched it.
+	 *
+	 * @tagName The complete tag name, including its configured prefix.
+	 */
+	private struct function checkExistingTagOnOrigin( required string tagName ){
+		var remoteTag = remoteTagState( arguments.tagName );
+		if ( remoteTag.status == "unknown" ) {
+			return error( "Could not check origin for tag #arguments.tagName# (#remoteTag.output#). Nothing has been published." );
+		}
+		if ( remoteTag.status == "present" && remoteTag.commit != headCommit() ) {
+			return error(
+				"Tag #arguments.tagName# is on origin at a different commit. Do not move a published tag. "
+				& "Verify the tag and release history, or choose a new version."
+			);
+		}
+		if ( remoteTag.status == "missing" ) {
+			print
+				.yellowLine( "  note  tag #arguments.tagName# exists only in this checkout; it will be pushed to origin before the GitHub Release" )
+				.toConsole();
+		}
+		return remoteTag;
 	}
 
 	private void function checkReleaseChangelog( required string releaseVersion ){
@@ -247,15 +285,24 @@ component {
 		required string releaseVersion,
 		required string tagName,
 		required boolean dryRun,
-		required boolean existingTag
+		required boolean existingTag,
+		string remoteTagStatus = ""
 	){
+		if ( arguments.existingTag ) {
+			print.greenLine( "  ok  existing tag #arguments.tagName# points to this commit" ).toConsole();
+			if ( arguments.remoteTagStatus == "missing" ) {
+				print.yellowLine( "  note  tag #arguments.tagName# is local only; it will be pushed to origin" ).toConsole();
+			} else {
+				print.greenLine( "  ok  tag #arguments.tagName# is on origin" ).toConsole();
+			}
+			print.greenLine( "  ok  existing-tag publish mode" ).toConsole();
+		} else {
+			print
+				.greenLine( "  ok  clean checkout#( arguments.branchName == variables.settings.branch ? " on " & variables.settings.branch : "" )#" )
+				.greenLine( "  ok  #arguments.releaseVersion# has not been released" )
+				.toConsole();
+		}
 		print
-			.greenLine(
-				arguments.existingTag
-					? "  ok  existing tag #arguments.tagName# points to this commit"
-					: "  ok  clean checkout#( arguments.branchName == variables.settings.branch ? " on " & variables.settings.branch : "" )#"
-			)
-			.greenLine( arguments.existingTag ? "  ok  existing-tag publish mode" : "  ok  #arguments.releaseVersion# has not been released" )
 			.greenLine( variables.settings.publish.github ? "  ok  changelog entry found" : "  --  changelog not needed" )
 			.greenLine( variables.settings.publish.github && !arguments.dryRun ? "  ok  GitHub CLI ready" : "  --  GitHub CLI not needed" )
 			.toConsole();
@@ -270,7 +317,8 @@ component {
 	 * @version     The version being released.
 	 * @notesOnly   Print the release notes and stop. Nothing is tagged or pushed.
 	 * @dryRun      Print what would run without doing it.
-	 * @existingTag The expected tag already exists, so only create the GitHub Release.
+	 * @existingTag The expected tag already exists. It is pushed only if origin lacks it, then
+	 *              the GitHub Release is created.
 	 */
 	function github(
 		string version      = "",
@@ -346,6 +394,13 @@ component {
 				.line( "  git tag #arguments.tagName#" )
 				.line( "  git push origin #variables.settings.branch#" )
 				.line( "  git push origin #arguments.tagName#" );
+		} else {
+			var remoteTag = remoteTagState( arguments.tagName );
+			if ( remoteTag.status == "missing" ) {
+				preview.line( "  git push origin #arguments.tagName#" );
+			} else if ( remoteTag.status == "unknown" ) {
+				preview.yellowLine( "  (could not check origin; a real run pushes #arguments.tagName# if origin lacks it)" );
+			}
 		}
 		preview
 			.line( "  gh " & arrayToList( arguments.ghArgs, " " ) )
@@ -378,6 +433,8 @@ component {
 			if ( result.exitCode != 0 ) {
 				return failWithManualSteps( "Pushing the tag failed (#result.output#).", arguments.tagName, arguments.ghArgs );
 			}
+		} else {
+			pushExistingTagIfMissing( arguments.tagName, arguments.ghArgs );
 		}
 
 		result = variables.config.execNative( "gh", arguments.ghArgs );
@@ -398,6 +455,65 @@ component {
 			.toConsole();
 	}
 
+	/**
+	 * Existing-tag mode: pushes the tag when origin does not have it yet. This runs right before
+	 * the GitHub Release, mirroring where the normal release pushes its own tag. The check is
+	 * repeated here rather than reused from preflight because the github target also runs on
+	 * its own to finish an interrupted release.
+	 *
+	 * @tagName The complete tag name, including its configured prefix.
+	 * @ghArgs  The arguments for the gh release command, for the recovery message.
+	 */
+	private function pushExistingTagIfMissing( required string tagName, required array ghArgs ){
+		var remoteTag = remoteTagState( arguments.tagName );
+		if ( remoteTag.status == "unknown" ) {
+			return failWithManualSteps(
+				"Could not check origin for tag #arguments.tagName# (#remoteTag.output#).",
+				arguments.tagName,
+				arguments.ghArgs,
+				false
+			);
+		}
+		if ( remoteTag.status == "present" ) {
+			if ( remoteTag.commit != headCommit() ) {
+				return error( "Tag #arguments.tagName# is on origin at a different commit. Refusing to publish the wrong source." );
+			}
+			return;
+		}
+
+		var result = variables.config.execNative( "git", [ "push", "origin", arguments.tagName ] );
+		if ( result.exitCode != 0 ) {
+			return failWithManualSteps( "Pushing the tag failed (#result.output#).", arguments.tagName, arguments.ghArgs, false );
+		}
+		print.greenLine( "Pushed tag #arguments.tagName# to origin." ).toConsole();
+		warnIfBranchNotOnOrigin();
+	}
+
+	/**
+	 * Pushing a tag sends its commit to origin, but not the production branch itself. A branch
+	 * left behind is not a release problem, so this only warns.
+	 */
+	private void function warnIfBranchNotOnOrigin(){
+		var branch  = variables.settings.branch;
+		var unknown = "  warning  could not confirm #branch# is pushed to origin; push it if you have not.";
+
+		var remoteBranch = variables.config.execNative( "git", [ "ls-remote", "origin", "refs/heads/" & branch ] );
+		if ( remoteBranch.exitCode != 0 || !len( trim( remoteBranch.output ) ) ) {
+			print.yellowLine( unknown ).toConsole();
+			return;
+		}
+
+		var remoteCommit = listFirst( listFirst( remoteBranch.output, chr( 10 ) ), chr( 9 ) );
+		var ancestry     = variables.config.execNative( "git", [ "merge-base", "--is-ancestor", "HEAD", remoteCommit ] );
+		if ( ancestry.exitCode == 1 ) {
+			print
+				.yellowLine( "  warning  origin/#branch# does not contain this commit yet. Push the branch: git push origin #branch#" )
+				.toConsole();
+		} else if ( ancestry.exitCode != 0 ) {
+			print.yellowLine( unknown ).toConsole();
+		}
+	}
+
 	// OTHER RELEASE HELPERS
 
 	/**
@@ -413,15 +529,57 @@ component {
 			return error( "Existing-tag mode expected #arguments.tagName#, but that tag is not available in this checkout." );
 		}
 
-		var tagCommit  = variables.config.execNative( "git", [ "rev-list", "-n", "1", "refs/tags/" & arguments.tagName ] );
-		var headCommit = variables.config.execNative( "git", [ "rev-parse", "HEAD" ] );
-		if (
-			tagCommit.exitCode != 0
-				|| headCommit.exitCode != 0
-				|| trim( tagCommit.output ) != trim( headCommit.output )
-		) {
+		var tagCommit = variables.config.execNative( "git", [ "rev-list", "-n", "1", "refs/tags/" & arguments.tagName ] );
+		if ( tagCommit.exitCode != 0 || trim( tagCommit.output ) != headCommit() ) {
 			return error( "Tag #arguments.tagName# does not point at the checked-out commit. Refusing to publish the wrong source." );
 		}
+	}
+
+	/**
+	 * Asks origin about one tag without fetching anything. Returns a struct with status
+	 * "present", "missing", or "unknown", and for a present tag the commit it points at.
+	 *
+	 * git ls-remote prints one line per match as "<sha><tab><ref>". An annotated tag adds a
+	 * second line ending in ^{} whose sha is the tagged commit; a lightweight tag's sha already
+	 * is the commit. Exit code 2 means origin answered but has no such tag. Anything else
+	 * non-zero means origin could not be asked, which is a different problem.
+	 *
+	 * @tagName The complete tag name, including its configured prefix.
+	 */
+	private struct function remoteTagState( required string tagName ){
+		var result = variables.config.execNative(
+			"git",
+			[ "ls-remote", "--exit-code", "--tags", "origin", "refs/tags/" & arguments.tagName ]
+		);
+		if ( result.exitCode == 2 ) {
+			return { status : "missing", commit : "", output : result.output };
+		}
+		if ( result.exitCode != 0 ) {
+			return { status : "unknown", commit : "", output : result.output };
+		}
+
+		var commit = "";
+		for ( var line in listToArray( result.output, chr( 10 ) ) ) {
+			var sha = trim( listFirst( line, chr( 9 ) ) );
+			var ref = trim( listLast( line, chr( 9 ) ) );
+			if ( right( ref, 3 ) == "^{}" ) {
+				commit = sha;
+				break;
+			}
+			if ( ref == "refs/tags/" & arguments.tagName ) {
+				commit = sha;
+			}
+		}
+		return { status : "present", commit : commit, output : result.output };
+	}
+
+	/** The checked-out commit's full sha. */
+	private string function headCommit(){
+		var head = variables.config.execNative( "git", [ "rev-parse", "HEAD" ] );
+		if ( head.exitCode != 0 ) {
+			return error( "git could not identify the checked-out commit (#head.output#)." );
+		}
+		return trim( head.output );
 	}
 
 	/**
@@ -534,18 +692,27 @@ component {
 	 * Stops the release after the package may already be published, printing the exact commands
 	 * that finish the job. Running the release again would refuse, because the version is out.
 	 *
-	 * @reason  What failed.
-	 * @tagName The tag for this release.
-	 * @ghArgs  The arguments for the gh release command.
+	 * @reason            What failed.
+	 * @tagName           The tag for this release.
+	 * @ghArgs            The arguments for the gh release command.
+	 * @includeBranchPush List the branch push too. Existing-tag mode never pushes the branch.
 	 */
-	private function failWithManualSteps( required string reason, required string tagName, required array ghArgs ){
+	private function failWithManualSteps(
+		required string reason,
+		required string tagName,
+		required array ghArgs,
+		boolean includeBranchPush = true
+	){
+		var steps = [];
+		if ( arguments.includeBranchPush ) {
+			steps.append( "git push origin " & variables.settings.branch );
+		}
+		steps.append( "git push origin " & arguments.tagName );
+		steps.append( "gh " & arrayToList( arguments.ghArgs, " " ) );
+
 		return fail(
 			arguments.reason & " The package may already be published, so finish by hand rather than running the release again.",
-			[
-				"git push origin " & variables.settings.branch,
-				"git push origin " & arguments.tagName,
-				"gh " & arrayToList( arguments.ghArgs, " " )
-			],
+			steps,
 			"Run these to finish"
 		);
 	}

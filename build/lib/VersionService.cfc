@@ -99,6 +99,102 @@ component {
 	}
 
 	/**
+	 * Compares two versions by Semantic Versioning precedence. Returns -1 when the first is
+	 * lower, 1 when it is higher, and 0 when they rank the same.
+	 *
+	 * A version without a prerelease outranks the same version with one, so 1.2.0 is higher
+	 * than 1.2.0-beta.3. Build metadata such as +build7 never counts.
+	 *
+	 * @first  The first version.
+	 * @second The second version.
+	 */
+	numeric function compareVersions( required string first, required string second ){
+		var a = parseVersion( arguments.first );
+		var b = parseVersion( arguments.second );
+
+		for ( var part in [ "major", "minor", "patch" ] ) {
+			if ( a[ part ] != b[ part ] ) {
+				return a[ part ] < b[ part ] ? -1 : 1;
+			}
+		}
+
+		var aIsPrerelease = len( a.prerelease ) > 0;
+		var bIsPrerelease = len( b.prerelease ) > 0;
+		if ( !aIsPrerelease && !bIsPrerelease ) {
+			return 0;
+		}
+		if ( !aIsPrerelease ) {
+			return 1;
+		}
+		if ( !bIsPrerelease ) {
+			return -1;
+		}
+		return comparePrereleases( a.prerelease, b.prerelease );
+	}
+
+	/**
+	 * Picks the highest version from a list. Prereleases are skipped unless asked for, and
+	 * values that are not versions are ignored. Returns an empty string when nothing qualifies.
+	 *
+	 * @versions          The versions to choose from, without any tag prefix.
+	 * @includePrerelease Let a prerelease win.
+	 */
+	string function highestVersion( required array versions, boolean includePrerelease = false ){
+		var best = "";
+		for ( var candidate in arguments.versions ) {
+			var version = trim( candidate );
+			if ( !reFind( "^\d+\.\d+\.\d+", version ) ) {
+				continue;
+			}
+			if ( !arguments.includePrerelease && len( parseVersion( version ).prerelease ) ) {
+				continue;
+			}
+			if ( !len( best ) || compareVersions( version, best ) > 0 ) {
+				best = version;
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * Compares two prerelease labels identifier by identifier, the way SemVer describes:
+	 * numbers compare as numbers, a number ranks below a word, and when one label runs out of
+	 * identifiers first it ranks lower.
+	 */
+	private numeric function comparePrereleases( required string first, required string second ){
+		var aParts = listToArray( arguments.first, "." );
+		var bParts = listToArray( arguments.second, "." );
+		var count  = max( arrayLen( aParts ), arrayLen( bParts ) );
+
+		for ( var index = 1; index <= count; index++ ) {
+			if ( index > arrayLen( aParts ) ) {
+				return -1;
+			}
+			if ( index > arrayLen( bParts ) ) {
+				return 1;
+			}
+			var aPart      = aParts[ index ];
+			var bPart      = bParts[ index ];
+			var aIsNumeric = reFind( "^\d+$", aPart ) > 0;
+			var bIsNumeric = reFind( "^\d+$", bPart ) > 0;
+
+			if ( aIsNumeric && bIsNumeric ) {
+				if ( val( aPart ) != val( bPart ) ) {
+					return val( aPart ) < val( bPart ) ? -1 : 1;
+				}
+			} else if ( aIsNumeric != bIsNumeric ) {
+				return aIsNumeric ? -1 : 1;
+			} else {
+				var textOrder = javaCast( "string", aPart ).compareTo( javaCast( "string", bPart ) );
+				if ( textOrder != 0 ) {
+					return textOrder < 0 ? -1 : 1;
+				}
+			}
+		}
+		return 0;
+	}
+
+	/**
 	 * Increases the number at the end of a prerelease label.
 	 */
 	private string function incrementPrerelease( required struct parsedVersion, string preid = "" ){

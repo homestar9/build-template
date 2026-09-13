@@ -114,6 +114,28 @@ component {
 		return releaseNotes;
 	}
 
+	/**
+	 * Lists every version that has its own section, in the order they appear. The [Unreleased]
+	 * section is left out because it is not a version.
+	 *
+	 * @content The complete changelog text.
+	 */
+	array function versionHeadings( required string content ){
+		var versions = [];
+		for ( var rawLine in listToArray( arguments.content, chr( 10 ), true ) ) {
+			var line  = reReplace( rawLine, chr( 13 ) & "$", "" );
+			var match = reFind( "^####\s*\[([^\]]+)\]", line, 1, true );
+			if ( arrayLen( match.pos ) < 2 || match.pos[ 1 ] == 0 ) {
+				continue;
+			}
+			var heading = trim( mid( line, match.pos[ 2 ], match.len[ 2 ] ) );
+			if ( heading != "Unreleased" ) {
+				versions.append( heading );
+			}
+		}
+		return versions;
+	}
+
 	private numeric function findUnreleasedHeading( required array lines ){
 		for ( var index = 1; index <= arrayLen( arguments.lines ); index++ ) {
 			if ( reFindNoCase( "^####\s*\[Unreleased\]", arguments.lines[ index ] ) ) {

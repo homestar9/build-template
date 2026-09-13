@@ -67,6 +67,35 @@ unmarked `build.json` and existing script alone, so rerunning it is safe. After 
 review `build/build.json` and correct anything the installer could not detect, especially the
 test runner URL and release branch.
 
+## Update
+
+Once a project has the kit, bring it up to the latest release with:
+
+```bash
+box run-script build-kit:update
+```
+
+The update task downloads the newest tagged build-template release, replaces the kit's own
+files (`build/*.cfc`, `build/lib/`, `build/templates/`, and `build/build-kit.json`), adds any
+new scripts to `box.json`, records the kit version as `templateVersion` in `build/build.json`,
+and prints the build-template changelog entries since the version the project was on. It never
+changes your settings in `build/build.json` and never deletes a file the kit does not ship.
+
+Useful variations:
+
+```bash
+box run-script build-kit:update :dryRun=true          # list what would change
+box run-script build-kit:update :version=1.5.0        # pick a release
+box run-script build-kit:update :source=../build-template   # use a local clone or zip
+```
+
+Review the result with `git diff build/ box.json`, then commit. If `build/templates/RELEASE.md`
+changed, copy it over the `RELEASE.md` in your project root unless you have customised yours.
+
+Projects that installed the kit before `build-kit:update` existed need one manual copy of the
+new `build` folder (keep your `build/build.json`), followed by the installer command above to
+add the new script. Every later update is one command.
+
 ## Your first release
 
 This example assumes the current version is `1.0.0` and you are releasing `1.0.1`.
@@ -165,7 +194,7 @@ The finished zip and checksum are saved under `.artifacts/`.
 | `box run-script release:check` | Find anything that would stop a release. |
 | `box run-script release:dryrun` | Rehearse a release without publishing. |
 | `box run-script release` | Build and publish the current version. |
-| `box run-script release:existing-tag` | Publish a tag already created at the checked-out commit by Gitflow or GitKraken. |
+| `box run-script release:existing-tag` | Publish a tag already created at the checked-out commit by Gitflow or GitKraken. Pushes the tag first if origin does not have it yet. |
 | `box run-script release:skip-tests` | Publish without rerunning tests that were already completed. |
 | `box run-script release:hotfix` | Alias for `release:skip-tests`; it does not manage a Gitflow hotfix branch. |
 | `box run-script bump:patch` | Release a backward-compatible bug fix. |
@@ -173,6 +202,7 @@ The finished zip and checksum are saved under `.artifacts/`.
 | `box run-script bump:major` | Release a breaking change. |
 | `box run-script test:engines` | Run the test suite on each configured CFML engine. |
 | `box run-script build:package` | Build and check the zip without publishing it. |
+| `box run-script build-kit:update` | Bring the `build` folder up to the latest build-template release. |
 
 The generated `RELEASE.md` explains Gitflow releases, prereleases, hotfixes, and recovery from
 a release that stops partway through.
@@ -295,6 +325,7 @@ all results, and the command returns an error when any engine failed.
 | `Could not find the GitHub CLI` | Install `gh`, open a new terminal, and run `gh auth login`. |
 | `has no "## [version]" section` | Add notes under `[Unreleased]`, then run the correct `bump` command. |
 | `Tag v1.2.3 already exists` | That version has already been released. Bump the version before trying again. |
+| `Tag v1.2.3 is on origin at a different commit` | Your local tag and the published tag disagree. Do not move the published tag; check the release history or choose a new version. |
 | `build.json is not valid JSON` | Check for missing quotes, trailing commas, or backslashes that need to be doubled. |
 
 Start with `box run-script release:check` when you are unsure. It reports all readiness
@@ -316,6 +347,10 @@ publish to ForgeBox or GitHub.
 
 The public task components stay in `build/`. Pure rules that do not need CommandBox live in
 `build/lib/`. Keeping those rules separate makes the release workflow easier to read and test.
+
+When you release a new kit version, change the version in both `box.json` and
+`build/build-kit.json`. A test fails when the two disagree, because the update task reports and
+records the version from `build-kit.json`.
 
 ## More information
 

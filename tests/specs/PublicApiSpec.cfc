@@ -11,7 +11,8 @@ component extends="testbox.system.BaseSpec" {
 					"build.Doctor"      : "init,run",
 					"build.Install"     : "run",
 					"build.Release"     : "github,init,preflight,run",
-					"build.TestEngines" : "init,run"
+					"build.TestEngines" : "init,run",
+					"build.Update"      : "init,run"
 				};
 
 				for ( var componentName in expectedFunctions ) {
@@ -33,6 +34,7 @@ component extends="testbox.system.BaseSpec" {
 					.toBe( "version,dryRun,existingTag" );
 				expect( functionArgumentNames( "build.Release", "github" ) )
 					.toBe( "version,notesOnly,dryRun,existingTag" );
+				expect( functionArgumentNames( "build.Update", "run" ) ).toBe( "source,version,dryRun" );
 			} );
 
 			it( "keeps every existing public argument default", function(){
@@ -76,6 +78,9 @@ component extends="testbox.system.BaseSpec" {
 					expect( argumentDefault( "build.Release", "github", flag ) ).toBeFalse();
 				}
 				expect( argumentDefault( "build.Release", "github", "notesOnly" ) ).toBeFalse();
+
+				expectStringDefaults( "build.Update", [ "run" ], [ "source", "version" ], "" );
+				expect( argumentDefault( "build.Update", "run", "dryRun" ) ).toBeFalse();
 			} );
 		} );
 	}

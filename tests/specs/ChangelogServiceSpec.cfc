@@ -58,6 +58,16 @@ component extends="testbox.system.BaseSpec" {
 				expect( changelogService.extractReleaseNotes( input, "1.2.0" ) ).toBe( "Final notes" );
 			} );
 
+			it( "lists version headings in file order without the unreleased section", function(){
+				var crlf  = chr( 13 ) & chr( 10 );
+				var h2    = repeatString( chr( 35 ), 2 ) & " ";
+				var input = h2 & "[Unreleased]" & crlf & crlf
+					& h2 & "[1.4.2] - 2028-08-10" & crlf & "- Latest" & crlf & crlf
+					& h2 & "[1.4.1] - 2028-08-07" & crlf & "- Older" & crlf & crlf
+					& "[1.4.2]: https://example.com/compare/v1.4.1...v1.4.2";
+				expect( arrayToList( changelogService.versionHeadings( input ) ) ).toBe( "1.4.2,1.4.1" );
+			} );
+
 			it( "rejects missing and empty version sections", function(){
 				var lf = chr( 10 );
 				var h2 = repeatString( chr( 35 ), 2 ) & " ";

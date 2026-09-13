@@ -38,6 +38,8 @@ component extends="testbox.system.BaseSpec" {
 				var settings    = deserializeJSON( fileRead( fixtureRoot & "/build/build.json" ) );
 				expect( packageData.scripts.release ).toBe( "keep this command" );
 				expect( packageData.scripts ).toHaveKey( "build:package" );
+				expect( packageData.scripts ).toHaveKey( "build-kit:update" );
+				expect( settings.templateVersion ).toBe( kitVersion() );
 				expect( packageData.scripts[ "bump:beta" ] )
 					.toBe( "task run taskFile=build/Bump.cfc :level=preminor :preid=beta" );
 				expect( packageData.scripts[ "bump:alpha" ] )
@@ -198,7 +200,118 @@ component extends="testbox.system.BaseSpec" {
 				expect( fixtureProcess.runGit( fixtureRoot, [ "tag", "--list" ] ).output ).toBe( "" );
 				expect( fixtureProcess.runGit( originRoot, [ "tag", "--list" ] ).output ).toBe( "" );
 			} );
+
+			it( "rehearses an existing-tag release whose tag is only local", function(){
+				writeTaggedReleaseProject();
+
+				var releaseResult = runExistingTagDryRun();
+				expectCommand( releaseResult, "the existing-tag dry run" );
+				expect( releaseResult.output ).toInclude( "local only" );
+				expect( releaseResult.output ).toInclude( "git push origin v1.0.0" );
+				expect( fixtureProcess.runGit( originRoot, [ "tag", "--list" ] ).output ).toBe( "" );
+			} );
+
+			it( "reports an existing tag that origin already has", function(){
+				writeTaggedReleaseProject();
+				expectGit( fixtureProcess.runGit( fixtureRoot, [ "push", "origin", "v1.0.0" ] ) );
+
+				var releaseResult = runExistingTagDryRun();
+				expectCommand( releaseResult, "the existing-tag dry run" );
+				expect( releaseResult.output ).toInclude( "is on origin" );
+				expect( releaseResult.output ).notToInclude( "git push origin v1.0.0" );
+			} );
+
+			it( "refuses an existing tag that origin holds at a different commit", function(){
+				writeTaggedReleaseProject();
+				expectGit( fixtureProcess.runGit( fixtureRoot, [ "push", "origin", "v1.0.0" ] ) );
+				fileWrite( fixtureRoot & "/later.txt", "a later commit" );
+				expectGit( fixtureProcess.runGit( fixtureRoot, [ "add", "." ] ) );
+				expectGit( fixtureProcess.runGit( fixtureRoot, [ "commit", "-m", "Later" ] ) );
+				expectGit( fixtureProcess.runGit( fixtureRoot, [ "tag", "-f", "v1.0.0" ] ) );
+
+				var releaseResult = runExistingTagDryRun();
+				expect( releaseResult.exitCode ).notToBe( 0 );
+				expect( releaseResult.output ).toInclude( "different commit" );
+			} );
+
+			// The github target really pushes the tag here, to the local bare origin. The GitHub
+			// Release step after it cannot succeed: gh is either not installed or finds no GitHub
+			// host among the remotes, so the run stops there and nothing leaves this machine.
+			it( "pushes a local-only tag before creating the GitHub Release", function(){
+				writeTaggedReleaseProject();
+				expectCommand( runExistingTagDryRun(), "the dry run that builds the zip" );
+
+				var githubResult = fixtureProcess.runBox(
+					fixtureRoot,
+					[
+						"task", "run", "taskFile=build/Release.cfc", "target=github",
+						":version=1.0.0", ":existingTag=true"
+					]
+				);
+				expect( githubResult.exitCode ).notToBe( 0 );
+				expect( githubResult.output ).toInclude( "Pushed tag v1.0.0 to origin" );
+				expect( githubResult.output ).notToInclude( "git push origin master" );
+				expect( fixtureProcess.runGit( originRoot, [ "tag", "--list" ] ).output ).toBe( "v1.0.0" );
+			} );
+
+			it( "updates the build kit from a local source without touching project settings", function(){
+				writeBasicProject( "1.0.0" );
+				var settings = deserializeJSON( fileRead( fixtureRoot & "/build/build.json" ) );
+				settings[ "templateVersion" ] = "1.0.0";
+				writeJSON( fixtureRoot & "/build/build.json", settings );
+
+				var repositoryRoot = findRepositoryRoot();
+				var doctorPath     = fixtureRoot & "/build/Doctor.cfc";
+				fileWrite( doctorPath, fileRead( doctorPath ) & chr( 10 ) & "// tampered" );
+				fileWrite( fixtureRoot & "/build/lib/Custom.cfc", "component {}" );
+				var updateArguments = [ "task", "run", "taskFile=build/Update.cfc", ":source=" & repositoryRoot ];
+				var dryRunArguments = duplicate( updateArguments );
+				dryRunArguments.append( ":dryRun=true" );
+
+				var dryRun = fixtureProcess.runBox( fixtureRoot, dryRunArguments );
+				expectCommand( dryRun, "the Update.cfc dry run" );
+				expect( dryRun.output ).toInclude( "update build/Doctor.cfc" );
+				expect( fileRead( doctorPath ) ).toInclude( "// tampered" );
+
+				var update = fixtureProcess.runBox( fixtureRoot, updateArguments );
+				expectCommand( update, "Update.cfc" );
+				expect( fileRead( doctorPath ) ).toBe( fileRead( repositoryRoot & "/build/Doctor.cfc" ) );
+				expect( fileExists( fixtureRoot & "/build/lib/Custom.cfc" ) ).toBeTrue();
+				expect( update.output ).toInclude( "1.0.0 -> " & kitVersion() );
+
+				var updatedSettings = deserializeJSON( fileRead( fixtureRoot & "/build/build.json" ) );
+				expect( updatedSettings.templateVersion ).toBe( kitVersion() );
+				expect( updatedSettings.branch ).toBe( "master" );
+				expect( updatedSettings.publish.forgebox ).toBeFalse();
+				expect( deserializeJSON( fileRead( fixtureRoot & "/box.json" ) ).scripts ).toHaveKey( "build-kit:update" );
+
+				var secondRun = fixtureProcess.runBox( fixtureRoot, updateArguments );
+				expectCommand( secondRun, "the second Update.cfc run" );
+				expect( secondRun.output ).toInclude( "already up to date" );
+			} );
 		} );
+	}
+
+	private string function kitVersion(){
+		return deserializeJSON( fileRead( findRepositoryRoot() & "/build/build-kit.json" ) ).version;
+	}
+
+	private void function writeTaggedReleaseProject(){
+		writeBasicProject( "1.0.0", true );
+		writeChangelog( false, "1.0.0" );
+		fileWrite( fixtureRoot & "/source.txt", "release fixture" );
+		createLocalGitRemote();
+		expectGit( fixtureProcess.runGit( fixtureRoot, [ "tag", "v1.0.0" ] ) );
+	}
+
+	private struct function runExistingTagDryRun(){
+		return fixtureProcess.runBox(
+			fixtureRoot,
+			[
+				"task", "run", "taskFile=build/Release.cfc", "target=run",
+				":version=1.0.0", ":existingTag=true", ":dryRun=true", ":skipTests=true"
+			]
+		);
 	}
 
 	private string function findRepositoryRoot(){
@@ -281,9 +394,22 @@ component extends="testbox.system.BaseSpec" {
 		fileWrite( arguments.path, serializeJSON( arguments.data ) );
 	}
 
+	/**
+	 * Removes a fixture. On Windows, Dropbox and antivirus scanners briefly hold files that
+	 * were just written, so the delete is retried and a leftover is tolerated: fixtures have
+	 * unique names inside the ignored .test-work folder, so one left behind harms nothing.
+	 */
 	private void function deleteDirectory( required string path ){
-		if ( len( arguments.path ) && directoryExists( arguments.path ) ) {
-			directoryDelete( arguments.path, true );
+		if ( !len( arguments.path ) || !directoryExists( arguments.path ) ) {
+			return;
+		}
+		for ( var attempt = 1; attempt <= 5; attempt++ ) {
+			try {
+				directoryDelete( arguments.path, true );
+				return;
+			} catch ( any deleteFailure ) {
+				sleep( 500 );
+			}
 		}
 	}
 }

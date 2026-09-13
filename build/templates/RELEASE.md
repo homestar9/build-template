@@ -18,6 +18,10 @@ Check all of it at once:
 box run-script release:check
 ```
 
+To bring the build kit itself up to its latest release, run `box run-script build-kit:update`.
+It replaces the kit's files under `build/`, leaves `build/build.json` alone, and prints what
+changed. Add `:dryRun=true` to see the list first.
+
 ## The routine
 
 ### 1. Write your notes as you work
@@ -242,16 +246,21 @@ build/build.json; the usual value is `v`. See GitKraken's
 2. On `release/1.2.0`, run `box run-script bump:minor`, review the files, and commit them.
 3. Test and run `box run-script release:dryrun` on the release branch.
 4. Use **Finish release**. GitKraken merges both branches and creates `v1.2.0`.
-5. Push production, `develop`, and `v1.2.0`, then check out the updated production branch.
+5. Push production and `develop`, then check out the updated production branch. Pushing
+   `v1.2.0` yourself is optional when you publish locally: `release:existing-tag` pushes it if
+   origin does not have it yet. Push it yourself when the GitHub Actions workflow should
+   publish, because that push is what starts the workflow.
 6. Choose one publisher:
    - If the tag push triggers the supplied GitHub Actions workflow, let that workflow publish.
    - To publish locally, run `box run-script release:existing-tag`.
 
 `release:existing-tag` runs the normal checks, tests, package build, ForgeBox publish, and
-GitHub Release creation, but it does not create, move, or push the tag. It refuses unless the
-expected tag points exactly at the checked-out production commit. Do not run the ordinary
-`box run-script release` after GitKraken finishes; that command owns tag creation and therefore
-rejects an existing tag.
+GitHub Release creation. It never creates or moves the tag. During its checks it asks origin
+about the tag: a tag origin does not have yet is pushed right before the GitHub Release is
+created, and a tag origin holds at a different commit stops the release before anything is
+published. It refuses unless the expected tag points exactly at the checked-out production
+commit. Do not run the ordinary `box run-script release` after GitKraken finishes; that command
+owns tag creation and therefore rejects an existing tag.
 
 ### Using the `git-flow` extension
 
@@ -289,7 +298,8 @@ git ls-remote --tags origin refs/tags/v1.2.0
 ```
 
 - If both finish merges already landed and `v1.2.0` points at production `HEAD`, do not Finish
-  again. Push any unpushed branches and tag, then use `release:existing-tag` or the tag workflow.
+  again. Push any unpushed branches, then use `release:existing-tag` (which pushes the tag for
+  you) or push the tag to start the tag workflow.
 - If the required merges have not landed, merge the release into production and `develop`
   manually or through pull requests so no tool tries to recreate the tag. The tag must resolve
   to the final production `HEAD` before `release:existing-tag` will publish it.
@@ -342,4 +352,6 @@ box task run taskFile=build/Release.cfc target=github :version=1.0.1 :existingTa
 | `is already a prerelease, so preminor was stopped` | Use `bump:prerelease`, or add `:allowPrereleaseRetarget=true` when retargeting is deliberate. |
 | `Tag v1.0.1 already exists` | That version is already released. Raise the version. |
 | `Tag v1.0.1 already exists on origin` | Fetch tags and choose a version that has not already been published. |
+| `Tag v1.0.1 is on origin at a different commit` | Your local tag and the published one disagree. Do not move the published tag; check the release history or choose a new version. |
+| `tag v1.0.1 exists only in this checkout; it will be pushed` | Not a problem. `release:existing-tag` pushes the tag right before it creates the GitHub Release. |
 | `Tag v1.0.1 does not point at the checked-out commit` | A tag-triggered build checked out the wrong source. Check the workflow ref and version. |

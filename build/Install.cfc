@@ -19,6 +19,7 @@ component {
 		variables.buildDir = getDirectoryFromPath( getCurrentTemplatePath() );
 		variables.root     = reReplace( reReplace( variables.buildDir, "[\\/]$", "" ), "[\\/][^\\/]+$", "" );
 		variables.projectSettings = new lib.ProjectSettingsService();
+		variables.packageScripts  = new lib.PackageScriptService();
 
 		print.line().boldLine( "Setting up the build kit" ).line( repeatString( "-", 60 ) ).toConsole();
 
@@ -65,7 +66,7 @@ component {
 		var packageData = deserializeJSON( fileRead( variables.root & "/box.json" ) );
 		var projectType = variables.projectSettings.detectProjectType( packageData );
 		var settings = {
-			"templateVersion" : "1.0.0",
+			"templateVersion" : kitVersion(),
 			"projectType"     : projectType,
 			"branch"          : detectBranch(),
 			"changelog"       : detectChangelogName(),
@@ -106,56 +107,25 @@ component {
 	}
 
 	/**
-	 * Adds missing build-kit scripts to box.json. It never replaces an existing script.
+	 * Adds missing build-kit scripts to box.json. It never replaces an existing script. The
+	 * script list itself lives in lib/PackageScriptService.cfc, shared with Update.cfc.
 	 */
 	private function patchBoxJSON(){
 		var packagePath = variables.root & "/box.json";
-		var packageData = deserializeJSON( fileRead( packagePath ) );
+		var result      = variables.packageScripts.addMissingScripts( deserializeJSON( fileRead( packagePath ) ) );
 
-		if ( !structKeyExists( packageData, "scripts" ) ) {
-			packageData[ "scripts" ] = {};
-		}
-
-		var requiredScripts = {
-			"release"         : "task run taskFile=build/Release.cfc target=run :version=`package show version`",
-			"release:check"   : "task run taskFile=build/Doctor.cfc",
-			"release:dryrun"  : "task run taskFile=build/Release.cfc target=run :version=`package show version` :dryRun=true",
-			"release:existing-tag" : "task run taskFile=build/Release.cfc target=run :version=`package show version` :existingTag=true",
-			"release:skip-tests" : "task run taskFile=build/Release.cfc target=run :version=`package show version` :skipTests=true",
-			"release:hotfix"  : "task run taskFile=build/Release.cfc target=run :version=`package show version` :skipTests=true",
-			"test:engines"    : "task run taskFile=build/TestEngines.cfc",
-			"bump:major"      : "task run taskFile=build/Bump.cfc :level=major",
-			"bump:minor"      : "task run taskFile=build/Bump.cfc :level=minor",
-			"bump:patch"      : "task run taskFile=build/Bump.cfc :level=patch",
-			"bump:prerelease" : "task run taskFile=build/Bump.cfc :level=prerelease",
-			"bump:beta"       : "task run taskFile=build/Bump.cfc :level=preminor :preid=beta",
-			"bump:alpha"      : "task run taskFile=build/Bump.cfc :level=preminor :preid=alpha",
-			"build:package"   : "task run taskFile=build/Build.cfc :projectName=`package show slug` :version=`package show version`"
-		};
-
-		var addedScripts    = [];
-		var existingScripts = [];
-		for ( var scriptName in requiredScripts ) {
-			if ( structKeyExists( packageData.scripts, scriptName ) ) {
-				existingScripts.append( scriptName );
-			} else {
-				packageData.scripts[ scriptName ] = requiredScripts[ scriptName ];
-				addedScripts.append( scriptName );
-			}
-		}
-
-		if ( arrayLen( addedScripts ) ) {
-			fileWrite( packagePath, formatJSON( packageData ) );
-			var scriptCount = arrayLen( addedScripts );
+		if ( arrayLen( result.added ) ) {
+			fileWrite( packagePath, formatJSON( result.packageData ) );
+			var scriptCount = arrayLen( result.added );
 			var scriptLabel = scriptCount == 1 ? "script" : "scripts";
 			print
-				.greenLine( "  added #scriptCount# #scriptLabel# to box.json: #addedScripts.sort( "text" ).toList( ", " )#" )
+				.greenLine( "  added #scriptCount# #scriptLabel# to box.json: #result.added.toList( ", " )#" )
 				.toConsole();
 		} else {
 			print.yellowLine( "  skip  box.json already has every script" ).toConsole();
 		}
-		if ( arrayLen( existingScripts ) ) {
-			print.line( "        left alone: #existingScripts.sort( "text" ).toList( ", " )#" ).toConsole();
+		if ( arrayLen( result.existing ) ) {
+			print.line( "        left alone: #result.existing.toList( ", " )#" ).toConsole();
 		}
 	}
 
@@ -204,6 +174,23 @@ component {
 	}
 
 	// PROJECT DETECTION
+
+	/**
+	 * Reads the kit's own version from build/build-kit.json, so build.json records which kit
+	 * release the project is on and the update task can say what changed since. A missing or
+	 * broken manifest must not stop an install.
+	 */
+	private string function kitVersion(){
+		try {
+			var manifest = deserializeJSON( fileRead( variables.buildDir & "build-kit.json" ) );
+			if ( isStruct( manifest ) && len( trim( manifest.version ?: "" ) ) ) {
+				return trim( manifest.version );
+			}
+		} catch ( any ignoredException ) {
+			// Fall through to the placeholder below.
+		}
+		return "0.0.0";
+	}
 
 	/**
 	 * Uses Gitflow's configured production branch when present. Otherwise reads the current

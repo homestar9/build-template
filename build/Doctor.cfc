@@ -128,18 +128,39 @@ component {
 		}
 	}
 
+	/**
+	 * A tag for the current version normally means it has been released. The exception is a
+	 * tag at the checked-out commit that origin has not seen, which is what a Gitflow finish
+	 * leaves behind before the release is published.
+	 */
 	private void function checkVersionTag(){
 		var tagName = variables.settings.tagPrefix & variables.config.version();
 		var tagged  = variables.config.execNative( "git", [ "rev-parse", "-q", "--verify", "refs/tags/" & tagName ] );
-		if ( tagged.exitCode == 0 ) {
-			report(
-				false,
-				"version",
-				"#tagName# is already released",
-				"Raise the version first: box run-script bump:patch"
-			);
-		} else {
+		if ( tagged.exitCode != 0 ) {
 			report( true, "version", "#tagName# has not been released" );
+			return;
+		}
+
+		var tagCommit  = variables.config.execNative( "git", [ "rev-list", "-n", "1", "refs/tags/" & tagName ] );
+		var headCommit = variables.config.execNative( "git", [ "rev-parse", "HEAD" ] );
+		var tagAtHead  = tagCommit.exitCode == 0
+			&& headCommit.exitCode == 0
+			&& trim( tagCommit.output ) == trim( headCommit.output );
+		if ( !tagAtHead ) {
+			report( false, "version", "#tagName# is already released", "Raise the version first: box run-script bump:patch" );
+			return;
+		}
+
+		var remoteTag = variables.config.execNative(
+			"git",
+			[ "ls-remote", "--exit-code", "--tags", "origin", "refs/tags/" & tagName ]
+		);
+		if ( remoteTag.exitCode == 0 ) {
+			report( false, "version", "#tagName# is already released (on origin)", "Raise the version first: box run-script bump:patch" );
+		} else if ( remoteTag.exitCode == 2 ) {
+			report( true, "version", "#tagName# is tagged at this commit but not on origin; release:existing-tag will push it" );
+		} else {
+			report( true, "version", "#tagName# is tagged at this commit; could not check origin" );
 		}
 	}
 
