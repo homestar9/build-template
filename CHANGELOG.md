@@ -7,6 +7,10 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-09-13
+
+- Cleaned up README and code documentation.
+
 ## [2.0.0] - 2026-09-13
 
 ### Changed
