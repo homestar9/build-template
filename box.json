@@ -28,6 +28,7 @@
         "/tests/",
         "/testbox/",
         "/.test-work/",
+        "/build.json",
         "/build-template-logo.avif",
         "/AGENTS.md",
         "/CLAUDE.md"
