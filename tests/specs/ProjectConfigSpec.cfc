@@ -1,4 +1,4 @@
-/** Tests setting defaults, overrides, validation, the legacy location, and the kit version guard. */
+/** Checks project setting defaults, overrides, errors, old files, and required kit versions. */
 component extends="tests.support.KitSpec" {
 
 	function run(){
@@ -11,7 +11,7 @@ component extends="tests.support.KitSpec" {
 				deleteDirectory( fixtureRoot );
 			} );
 
-			it( "loads defaults and derives the test runner from box.json", function(){
+			it( "loads defaults and reads the test runner from box.json", function(){
 				writePackage( { name : "Sample", slug : "sample", version : "1.2.3", testbox : { runner : "http://localhost:61000/tests" } } );
 				writeSettings( {} );
 
@@ -26,7 +26,7 @@ component extends="tests.support.KitSpec" {
 				expect( config.configPath() ).toBe( fixtureRoot & "/build.json" );
 			} );
 
-			it( "merges nested settings without losing sibling defaults", function(){
+			it( "keeps other defaults when one nested setting changes", function(){
 				writePackage( { name : "Sample", version : "1.0.0" } );
 				writeSettings( { publish : { github : false }, excludesAdd : [ "^private$" ] } );
 
@@ -36,19 +36,19 @@ component extends="tests.support.KitSpec" {
 				expect( arrayToList( settings.excludesAdd ) ).toBe( "^private$" );
 			} );
 
-			it( "turns ForgeBox off by default for applications", function(){
+			it( "disables ForgeBox by default for applications", function(){
 				writePackage( { name : "Sample", version : "1.0.0" } );
 				writeSettings( { projectType : "app" } );
 				expect( kit( "ProjectConfig" ).load( fixtureRoot ).getSettings().publish.forgebox ).toBeFalse();
 			} );
 
-			it( "keeps an explicit application ForgeBox choice", function(){
+			it( "keeps an application's explicit ForgeBox setting", function(){
 				writePackage( { name : "Sample", version : "1.0.0" } );
 				writeSettings( { projectType : "app", publish : { forgebox : true } } );
 				expect( kit( "ProjectConfig" ).load( fixtureRoot ).getSettings().publish.forgebox ).toBeTrue();
 			} );
 
-			it( "rejects invalid settings with a direct message", function(){
+			it( "reports invalid settings with a clear message", function(){
 				writePackage( { name : "Sample", version : "1.0.0" } );
 				writeSettings( { projectType : "unknown" } );
 				expect( function(){
@@ -56,7 +56,7 @@ component extends="tests.support.KitSpec" {
 				} ).toThrow( type = "BuildConfig", regex = "projectType" );
 			} );
 
-			it( "still reads the 1.x location and says so", function(){
+			it( "reads and reports the old 1.x settings location", function(){
 				writePackage( { name : "Sample", version : "1.0.0" } );
 				directoryCreate( fixtureRoot & "/build", true, true );
 				fileWrite( fixtureRoot & "/build/build.json", serializeJSON( { branch : "master" } ) );
@@ -67,14 +67,14 @@ component extends="tests.support.KitSpec" {
 				expect( config.configPath() ).toBe( fixtureRoot & "/build/build.json" );
 			} );
 
-			it( "works with no settings file at all", function(){
+			it( "uses defaults when the project has no settings file", function(){
 				writePackage( { name : "Sample", version : "1.0.0" } );
 				var config = kit( "ProjectConfig" ).load( fixtureRoot );
 				expect( config.configPath() ).toBe( "" );
 				expect( config.getSettings().projectType ).toBe( "module" );
 			} );
 
-			it( "refuses a project that needs a newer kit", function(){
+			it( "stops when the project requires a newer kit", function(){
 				writePackage( { name : "Sample", version : "1.0.0" } );
 				writeSettings( { minimumKitVersion : "99.0.0" } );
 				expect( function(){
@@ -85,7 +85,7 @@ component extends="tests.support.KitSpec" {
 				expect( kit( "ProjectConfig" ).load( fixtureRoot ).getSettings().minimumKitVersion ).toBe( "0.0.1" );
 			} );
 
-			it( "knows its own version", function(){
+			it( "reads the installed kit version", function(){
 				writePackage( { name : "Sample", version : "1.0.0" } );
 				expect( kit( "ProjectConfig" ).load( fixtureRoot ).kitVersion() ).toBe( kitVersion() );
 			} );

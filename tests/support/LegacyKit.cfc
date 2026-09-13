@@ -1,12 +1,12 @@
 /**
- * Writes a project shaped the way the 1.5.0 installer left it: a copied build folder with
- * the kit's files, build/build.json, and the box.json scripts. The migrate specs start from
- * this and check what 2.0 does with it.
+ * Creates a project that matches the 1.5.0 layout. It contains the copied kit files,
+ * build/build.json, and old box.json scripts. Migration tests use this project to check the
+ * 2.0 migration.
  */
 component {
 
 	/**
-	 * @root The empty project folder to fill.
+	 * @root The empty project folder to create.
 	 */
 	void function writeProject( required string root ){
 		var scripts = application.wirebox.getInstance( "PackageScriptService@build-template" ).legacyScripts();
@@ -45,7 +45,7 @@ component {
 		}
 		fileWrite( arguments.root & "/build/build-kit.json", serializeJSON( { "version" : "1.5.0", "repository" : "homestar9/build-template" } ) );
 
-		// Not part of the kit; must survive the migration.
+		// This project file did not come from the kit. The migration must keep it.
 		fileWrite( arguments.root & "/build/lib/Custom.cfc", "component {}" );
 		fileWrite( arguments.root & "/CHANGELOG.md", repeatString( chr( 35 ), 2 ) & " [Unreleased]" & chr( 10 ) );
 	}

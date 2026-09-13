@@ -1,25 +1,25 @@
 /**
- * Calculates semantic versions for the bump task.
+ * Calculates Semantic Versioning values for the bump command.
  *
- * This component does not read or write files. It receives a version string and returns a
- * new version string. Bump.cfc owns the command output and file changes.
+ * This component does not read or write files. It receives version strings and returns parsed,
+ * compared, or updated values. VersionBumper.cfc handles output and file changes.
  */
 component {
 
 	/**
-	 * Returns the version levels accepted by Bump.cfc.
+	 * Returns the version change levels accepted by VersionBumper.cfc.
 	 */
 	string function supportedLevels(){
 		return "major,minor,patch,prerelease,premajor,preminor,prepatch,none";
 	}
 
 	/**
-	 * Splits a semantic version into its named parts.
+	 * Splits a semantic version into named parts.
 	 *
-	 * For example, 1.2.3-beta.4+build7 returns major 1, minor 2, patch 3,
-	 * prerelease "beta.4", and build "build7".
+	 * For example, 1.2.3-beta.4+build7 returns major 1, minor 2, patch 3, prerelease
+	 * "beta.4", and build metadata "build7".
 	 *
-	 * @version The version to parse.
+	 * @version The version string to parse.
 	 */
 	struct function parseVersion( required string version ){
 		var remainingVersion = trim( arguments.version );
@@ -49,14 +49,14 @@ component {
 	}
 
 	/**
-	 * Calculates the next version for one supported bump level.
+	 * Calculates a version for one supported change level.
 	 *
-	 * A normal bump finishes a matching prerelease. For example, a patch bump changes
-	 * 1.2.3-beta.2 to 1.2.3. A prerelease bump changes beta.2 to beta.3.
+	 * A normal change finishes a matching prerelease. For example, patch changes
+	 * 1.2.3-beta.2 to 1.2.3. The prerelease level changes beta.2 to beta.3.
 	 *
-	 * @current The current version.
-	 * @level   A value returned by supportedLevels().
-	 * @preid   The prerelease label. An empty value keeps the current label or starts "beta".
+	 * @current The current version string.
+	 * @level   One of the values returned by supportedLevels().
+	 * @preid   The prerelease label. An empty value keeps the current label or uses "beta".
 	 */
 	string function nextVersion( required string current, required string level, string preid = "" ){
 		var parsedVersion = parseVersion( arguments.current );
@@ -99,14 +99,14 @@ component {
 	}
 
 	/**
-	 * Compares two versions by Semantic Versioning precedence. Returns -1 when the first is
-	 * lower, 1 when it is higher, and 0 when they rank the same.
+	 * Compares two versions by Semantic Versioning order. It returns -1 when the first version
+	 * is lower, 1 when it is higher, and 0 when both versions have the same order.
 	 *
-	 * A version without a prerelease outranks the same version with one, so 1.2.0 is higher
-	 * than 1.2.0-beta.3. Build metadata such as +build7 never counts.
+	 * A final version is higher than a prerelease with the same numbers. For example, 1.2.0 is
+	 * higher than 1.2.0-beta.3. Build metadata such as +build7 does not affect the result.
 	 *
-	 * @first  The first version.
-	 * @second The second version.
+	 * @first  The first version to compare.
+	 * @second The second version to compare.
 	 */
 	numeric function compareVersions( required string first, required string second ){
 		var a = parseVersion( arguments.first );
@@ -133,11 +133,12 @@ component {
 	}
 
 	/**
-	 * Picks the highest version from a list. Prereleases are skipped unless asked for, and
-	 * values that are not versions are ignored. Returns an empty string when nothing qualifies.
+	 * Returns the highest valid version in a list. It ignores invalid versions. It also ignores
+	 * prereleases unless includePrerelease is true. It returns an empty string when no value
+	 * can be used.
 	 *
-	 * @versions          The versions to choose from, without any tag prefix.
-	 * @includePrerelease Let a prerelease win.
+	 * @versions          Version strings without a tag prefix.
+	 * @includePrerelease Allows a prerelease to be returned.
 	 */
 	string function highestVersion( required array versions, boolean includePrerelease = false ){
 		var best = "";
@@ -157,9 +158,8 @@ component {
 	}
 
 	/**
-	 * Compares two prerelease labels identifier by identifier, the way SemVer describes:
-	 * numbers compare as numbers, a number ranks below a word, and when one label runs out of
-	 * identifiers first it ranks lower.
+	 * Compares prerelease labels one part at a time by SemVer rules. Numeric parts compare as
+	 * numbers. A number is lower than a word. A label with fewer equal parts is lower.
 	 */
 	private numeric function comparePrereleases( required string first, required string second ){
 		var aParts = listToArray( arguments.first, "." );
@@ -195,7 +195,7 @@ component {
 	}
 
 	/**
-	 * Increases the number at the end of a prerelease label.
+	 * Adds one to the number at the end of a prerelease label.
 	 */
 	private string function incrementPrerelease( required struct parsedVersion, string preid = "" ){
 		var coreVersion = "#arguments.parsedVersion.major#.#arguments.parsedVersion.minor#.#arguments.parsedVersion.patch#";
@@ -203,7 +203,7 @@ component {
 		if ( !len( arguments.parsedVersion.prerelease ) ) {
 			throw(
 				type    = "BuildVersion.NotPrerelease",
-				message = "#coreVersion# is not a prerelease, so there is nothing to step forward."
+				message = "#coreVersion# is not a prerelease. Use prepatch, preminor, or premajor to start one."
 			);
 		}
 

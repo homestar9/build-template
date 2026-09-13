@@ -1,19 +1,19 @@
 /**
- * Runs one release command in the current folder with the kit loaded from this checkout.
+ * Runs one release command in the current folder with this checkout loaded as the kit.
  *
- * The integration specs start a fresh `box` in a throwaway project and run this task there:
+ * Integration tests start a new `box` process in a temporary project and run this task:
  *
  *   box task run taskFile=<repo>/tests/support/Invoke.cfc :line="release check"
  *
- * That exercises the real commands, in a real shell, against the working copy, without
- * installing anything into the developer's CommandBox. A non-zero exit from the command ends
- * the task with an error, so the spec sees the exit code.
+ * This uses the real commands and working copy without installing the kit in the developer's
+ * CommandBox. A nonzero command exit ends the task with an error. The test can then read that
+ * exit code.
  */
 component {
 
 	/**
-	 * @line The command line to run, for example "release bump patch --dryRun". It is named
-	 *       line rather than command because command() is the helper that runs it.
+	 * @line The command line to run, such as "release bump patch --dryRun". The argument is
+	 *       named line because command() is the function that runs it.
 	 */
 	function run( required string line ){
 		var supportDir     = reReplace( getDirectoryFromPath( getCurrentTemplatePath() ), "[\\/]$", "" );

@@ -1,20 +1,20 @@
 /**
- * Reads and changes changelog text for the bump and release tasks.
+ * Reads and updates changelog text for version and release commands.
  *
- * This component works with strings only. The task components check file paths and write the
- * returned text. Keeping file access outside this component makes every text rule easy to test.
+ * This component only works with text strings. Other components read and write the files.
+ * Tests can check every changelog rule without using the file system.
  */
 component {
 
 	/**
-	 * Moves the [Unreleased] notes into a dated version section.
+	 * Moves [Unreleased] notes into a dated section for one version.
 	 *
-	 * The returned text uses the same line endings as the input text.
+	 * The result keeps the input text's line ending style.
 	 *
-	 * @content       The complete changelog text.
-	 * @version       The version for the new section.
-	 * @date          The release date in YYYY-MM-DD form.
-	 * @changelogName The filename used in error messages.
+	 * @content       The full changelog text.
+	 * @version       The version for the dated section.
+	 * @date          The release date in YYYY-MM-DD format.
+	 * @changelogName The filename to include in error messages.
 	 */
 	string function moveUnreleasedNotes(
 		required string content,
@@ -34,7 +34,7 @@ component {
 		if ( unreleasedIndex == 0 ) {
 			throw(
 				type    = "BuildChangelog.MissingUnreleased",
-				message = "#arguments.changelogName# has no ""#### [Unreleased]"" section. Add one, put your notes under it, and run this again."
+				message = "#arguments.changelogName# does not have a ""#### [Unreleased]"" section. Add the heading, write your notes below it, and run the command again."
 			);
 		}
 
@@ -45,7 +45,7 @@ component {
 		if ( !arrayLen( releaseNotes ) ) {
 			throw(
 				type    = "BuildChangelog.EmptyUnreleased",
-				message = "The ""#### [Unreleased]"" section in #arguments.changelogName# is empty. Write the release notes first."
+				message = "The ""#### [Unreleased]"" section in #arguments.changelogName# is empty. Add at least one release note first."
 			);
 		}
 
@@ -62,11 +62,11 @@ component {
 	}
 
 	/**
-	 * Returns the notes inside one dated version section.
+	 * Returns the notes from one dated version section.
 	 *
-	 * @content       The complete changelog text.
-	 * @version       The version whose notes are needed.
-	 * @changelogName The filename used in error messages.
+	 * @content       The full changelog text.
+	 * @version       The version to read.
+	 * @changelogName The filename to include in error messages.
 	 */
 	string function extractReleaseNotes(
 		required string content,
@@ -97,9 +97,9 @@ component {
 		if ( !insideSection ) {
 			throw(
 				type    = "BuildChangelog.MissingVersion",
-				message = "#arguments.changelogName# has no ""#### [#arguments.version#]"" section. "
-					& "Move your notes out of [Unreleased] into a dated section by running: "
-					& "box run-script bump:patch"
+				message = "#arguments.changelogName# does not have a ""#### [#arguments.version#]"" section. "
+					& "Move the [Unreleased] notes into a dated section with: "
+					& "box release bump patch"
 			);
 		}
 
@@ -107,7 +107,7 @@ component {
 		if ( !len( releaseNotes ) ) {
 			throw(
 				type    = "BuildChangelog.EmptyVersion",
-				message = "The ""#### [#arguments.version#]"" section in #arguments.changelogName# is empty. Write the notes first."
+				message = "The ""#### [#arguments.version#]"" section in #arguments.changelogName# is empty. Add at least one release note first."
 			);
 		}
 
@@ -115,10 +115,10 @@ component {
 	}
 
 	/**
-	 * Lists every version that has its own section, in the order they appear. The [Unreleased]
-	 * section is left out because it is not a version.
+	 * Lists version headings in their original order. It leaves out [Unreleased] because that
+	 * heading does not identify a version.
 	 *
-	 * @content The complete changelog text.
+	 * @content The full changelog text.
 	 */
 	array function versionHeadings( required string content ){
 		var versions = [];

@@ -1,16 +1,16 @@
 /**
- * Runs outside programs such as git and gh and returns their exit code and text output.
+ * Runs programs such as git and gh. It returns their exit code and text output.
  *
- * It never throws, so the caller decides what a failure means. That matters for checks such
- * as `git rev-parse --verify`, where a non-zero exit is the answer we want.
+ * This component does not throw an exception when a program fails. The caller decides what
+ * each exit code means. Some checks, such as `git rev-parse --verify`, use a nonzero exit code
+ * as a normal result.
  *
- * Arguments are passed as a list rather than one long string. The program gets each one
- * exactly as written, so a file path containing spaces needs no quoting and cannot be split
- * in the wrong place.
+ * Arguments use an array instead of one command string. The program receives each array item
+ * as one argument. Paths with spaces do not need extra quotes and cannot split into separate
+ * arguments.
  *
- * This runs the program directly through Java instead of through CommandBox, so there are no
- * shell features: no pipes, no redirection, no wildcards. Every call is one program with
- * plain arguments, which is all a release needs.
+ * Java starts the program directly. The command does not use a shell, so pipes, redirects,
+ * and wildcards do not work. Each call runs one program with a list of plain arguments.
  */
 component singleton {
 
@@ -20,12 +20,12 @@ component singleton {
 	}
 
 	/**
-	 * Runs one program and returns { exitCode, output }. Error output is folded into the
-	 * normal output, because a program's complaint is usually the most useful part of it.
+	 * Runs one program and returns { exitCode, output }. The output combines standard output
+	 * and error output so the caller receives the program's full message.
 	 *
-	 * @name             The program name, for example "git".
-	 * @args             The arguments, for example [ "status", "--porcelain" ].
-	 * @workingDirectory The folder to run it in, normally the project root.
+	 * @name             The program name, such as "git".
+	 * @args             The argument list, such as [ "status", "--porcelain" ].
+	 * @workingDirectory The folder where the program will run. This is usually the project root.
 	 */
 	struct function run( required string name, array args = [], required string workingDirectory ){
 		var binary  = findBinary( arguments.name );
@@ -55,35 +55,35 @@ component singleton {
 
 			return { exitCode : process.waitFor(), output : trim( output.toString() ) };
 		} catch ( any exception ) {
-			// Reaching here almost always means the program is not installed. 127 is the
-			// shell's own "command not found" code, so callers can spot that case.
+			// This error usually means that the program is not installed. Exit code 127 means
+			// "command not found," so callers can handle that case directly.
 			return {
 				exitCode : 127,
-				output   : "Could not run '#arguments.name#': #exception.message#"
+				output   : "Could not start '#arguments.name#': #exception.message#"
 			};
 		}
 	}
 
 	/**
-	 * Reports whether a program can be found and run at all.
+	 * Returns true when the program can be found and started.
 	 *
-	 * @name The program name, for example "gh".
+	 * @name The program name, such as "gh".
 	 */
 	boolean function commandExists( required string name ){
-		// A found program has a full path; a missing one falls back to the bare name.
+		// A found program has a full path. A missing program keeps its original name.
 		return findBinary( arguments.name ) != arguments.name;
 	}
 
 	/**
-	 * Finds a program and returns its full path, for example
-	 * C:\Program Files\Git\cmd\git.exe. Returns the bare name when nothing is found, which
-	 * lets the system try its own lookup and produces a readable error if the tool is missing.
-	 *
-	 * It searches PATH first, then a list of usual install folders. That second pass matters:
-	 * a terminal opened before you installed a tool keeps its old PATH until you open a new
-	 * one, so a program that works in a fresh window can look missing here.
-	 *
-	 * Results are remembered for the life of the shell.
+	 * Finds a program and returns its full path, such as
+	 * C:\Program Files\Git\cmd\git.exe. It returns the original name when no file is found.
+	 * The operating system can then try its own lookup and return a clear error.
+ *
+	 * It searches PATH first. It then searches common installation folders. A terminal keeps
+	 * the PATH value from when it started. The second search can find a program that was
+	 * installed after the terminal opened.
+ *
+	 * It stores each result until the CommandBox shell closes.
 	 *
 	 * @name The program name, for example "git", "gh".
 	 */

@@ -1,4 +1,4 @@
-/** Tests changelog section changes with both common line-ending styles. */
+/** Checks changelog sections with Unix and Windows line endings. */
 component extends="tests.support.KitSpec" {
 
 	function run(){
@@ -7,7 +7,7 @@ component extends="tests.support.KitSpec" {
 				changelogService = kit( "ChangelogService" );
 			} );
 
-			it( "moves unreleased notes into a dated section", function(){
+			it( "moves Unreleased notes into a dated version section", function(){
 				var lf    = chr( 10 );
 				var h2    = repeatString( chr( 35 ), 2 ) & " ";
 				var h3    = repeatString( chr( 35 ), 3 ) & " ";
@@ -21,7 +21,7 @@ component extends="tests.support.KitSpec" {
 				expect( output ).toInclude( h2 & "[1.0.0] - 2026-01-01" );
 			} );
 
-			it( "keeps Windows line endings", function(){
+			it( "preserves Windows line endings", function(){
 				var crlf  = chr( 13 ) & chr( 10 );
 				var h2    = repeatString( chr( 35 ), 2 ) & " ";
 				var input = h2 & "[Unreleased]" & crlf & crlf & "- Fixed" & crlf & crlf
@@ -32,13 +32,13 @@ component extends="tests.support.KitSpec" {
 				expect( replace( output, crlf, "", "all" ) ).notToInclude( chr( 10 ) );
 			} );
 
-			it( "rejects a missing unreleased section", function(){
+			it( "reports a missing Unreleased section", function(){
 				expect( function(){
 					changelogService.moveUnreleasedNotes( "#chr( 35 )# Changelog", "1.0.1", "2026-08-07" );
 				} ).toThrow( type = "BuildChangelog.MissingUnreleased" );
 			} );
 
-			it( "rejects an empty unreleased section", function(){
+			it( "reports an empty Unreleased section", function(){
 				var lf = chr( 10 );
 				var h2 = repeatString( chr( 35 ), 2 ) & " ";
 				expect( function(){
@@ -50,7 +50,7 @@ component extends="tests.support.KitSpec" {
 				} ).toThrow( type = "BuildChangelog.EmptyUnreleased" );
 			} );
 
-			it( "extracts one version without matching a longer prerelease version", function(){
+			it( "reads one version without matching a longer prerelease version", function(){
 				var lf    = chr( 10 );
 				var h2    = repeatString( chr( 35 ), 2 ) & " ";
 				var input = h2 & "[1.2.0-beta.1] - 2026-08-01" & lf & "Beta notes" & lf & lf
@@ -58,7 +58,7 @@ component extends="tests.support.KitSpec" {
 				expect( changelogService.extractReleaseNotes( input, "1.2.0" ) ).toBe( "Final notes" );
 			} );
 
-			it( "lists version headings in file order without the unreleased section", function(){
+			it( "lists version headings in file order without Unreleased", function(){
 				var crlf  = chr( 13 ) & chr( 10 );
 				var h2    = repeatString( chr( 35 ), 2 ) & " ";
 				var input = h2 & "[Unreleased]" & crlf & crlf
@@ -68,7 +68,7 @@ component extends="tests.support.KitSpec" {
 				expect( arrayToList( changelogService.versionHeadings( input ) ) ).toBe( "1.4.2,1.4.1" );
 			} );
 
-			it( "rejects missing and empty version sections", function(){
+			it( "reports missing and empty version sections", function(){
 				var lf = chr( 10 );
 				var h2 = repeatString( chr( 35 ), 2 ) & " ";
 				expect( function(){

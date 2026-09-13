@@ -1,9 +1,9 @@
 /**
- * Moves a project from the 1.x vendored kit (a copied build folder) to the 2.0 module.
+ * Moves a project from the copied 1.x build kit to the 2.0 module.
  * .
- * Moves build/build.json to build.json, deletes the kit's own files from build/ while keeping
- * anything else there, and rewrites the box.json scripts that pointed at those files so
- * `box run-script release` keeps working. Every change is listed first.
+ * It moves build/build.json to build.json. It deletes only the files that the kit added under
+ * build/. It keeps all other files. It updates the old box.json scripts so
+ * `box run-script release` still works. It lists every change before applying it.
  * .
  * {code:bash}
  * release migrate --dryRun
@@ -14,8 +14,8 @@
 component extends="build-template.models.BaseKitCommand" {
 
 	/**
-	 * @dryRun        List the changes without making them.
-	 * @removeScripts Delete the 1.x box.json scripts instead of rewriting them to the new commands.
+	 * @dryRun        Lists the changes without applying them.
+	 * @removeScripts Deletes the 1.x box.json scripts instead of updating them.
 	 */
 	function run( boolean dryRun = false, boolean removeScripts = false ){
 		var root = projectRoot();

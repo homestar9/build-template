@@ -1,9 +1,9 @@
-/** Uses MockBox to check the engine sweep without starting servers. */
+/** Uses MockBox to check the engine process without starting real servers. */
 component extends="tests.support.KitSpec" {
 
 	function run(){
-		describe( "Engine runner workflow", function(){
-			it( "runs every configured engine before it reports results", function(){
+		describe( "Engine test process", function(){
+			it( "runs all configured engines before reporting results", function(){
 				var runner = prepareMock( kit( "EngineRunner" ) );
 				runner.$property(
 					propertyName  = "settings",
@@ -27,7 +27,7 @@ component extends="tests.support.KitSpec" {
 				expect( runner.$count( "report" ) ).toBe( 1 );
 			} );
 
-			it( "stops an engine after its suite fails", function(){
+			it( "stops an engine after its tests fail", function(){
 				var runner  = prepareMock( kit( "EngineRunner" ) );
 				var printer = createPrinterStub();
 				runner.$property( propertyName = "print", propertyScope = "variables", mock = printer );
@@ -35,7 +35,7 @@ component extends="tests.support.KitSpec" {
 				runner.$( "warmUp", { ok : true, reason : "" } );
 				runner.$( "runTestSuite", true );
 				runner.$( "stopEngine" );
-				runner.$( "recordFailure", { name : "Lucee", passed : false, minutes : "0.1", reason : "the suite failed" } );
+				runner.$( "recordFailure", { name : "Lucee", passed : false, minutes : "0.1", reason : "the tests failed" } );
 				makePublic( runner, "runEngine" );
 
 				var result = runner.runEngine( { name : "Lucee", configFile : "server-lucee.json" } );

@@ -1,19 +1,18 @@
 /**
- * Runs the project test suite on every configured CFML engine.
+ * Runs the project tests on each configured CFML engine.
  *
- * `box release engines` needs the engine names and server JSON files in build.json. The
- * engines run one at a time because they share one port.
+ * `box release engines` reads engine names and server JSON filenames from build.json. The
+ * engines run one at a time because they use the same port.
  *
- * It stops old servers, starts one engine, waits for the site, runs the suite, and stops that
- * engine. Every configured engine gets a turn even when an earlier engine fails. It reports
- * all results and stops with an error when any engine failed.
+ * It stops old servers before starting the first engine. For each engine, it starts the
+ * server, waits for the site, runs the tests, and stops the server. A failure does not stop
+ * the remaining engines. The final report returns an error when any engine fails.
  */
 component extends="build-template.models.BaseKitService" {
 
 	/**
-	 * Runs the suite on each engine in turn. Prints a line per engine at the end and stops with
-	 * an error if any of them failed, so a failure still stops CI and the release. Leaves every
-	 * server stopped either way.
+	 * Tests each engine and prints all results. It stops all servers before returning. It
+	 * returns an error after the report when any engine fails.
 	 */
 	function run(){
 		if ( !arrayLen( variables.settings.engines ) ) {
@@ -25,17 +24,18 @@ component extends="build-template.models.BaseKitService" {
 					'    { "name": "Adobe 2023", "configFile": "server-adobe@2023.json" }',
 					']',
 					"",
-					"Each configFile is a server json file in your project root.",
-					"Every engine you list is run, in the order you list them."
+					"Each configFile must name a server JSON file in the project root.",
+					"The command runs each engine in the listed order."
 				],
-				"Add them to build.json like this"
+				"Add engines to build.json like this"
 			);
 		}
 
 		var results = [];
 		var started = getTickCount();
 
-		// Only one server can hold the port, and we do not know which one is up.
+		// Only one server can use the test port. Stop every configured server because the
+		// command does not know which server is running.
 		stopAllEngines();
 
 		for ( var engine in variables.settings.engines ) {
@@ -65,14 +65,14 @@ component extends="build-template.models.BaseKitService" {
 		var suiteFailed = runTestSuite( engineName );
 		stopEngine( arguments.engine.configFile );
 		if ( suiteFailed ) {
-			return recordFailure( engineName, engineStart, "the suite failed" );
+			return recordFailure( engineName, engineStart, "the tests failed" );
 		}
 
 		return recordSuccess( engineName, engineStart );
 	}
 
 	private boolean function runTestSuite( required string engineName ){
-		print.blueLine( "Running the suite on #arguments.engineName#..." ).toConsole();
+		print.blueLine( "Running the tests on #arguments.engineName#..." ).toConsole();
 		try {
 			command( "testbox run" )
 				.params( runner = variables.settings.testRunner, verbose = false )
@@ -84,13 +84,12 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Starts one engine's server. Returns { ok, reason } rather than stopping the run, so the
-	 * sweep can record the failure and move on to the next engine.
+	 * Starts one engine server and returns { ok, reason }. It returns the failure instead of
+	 * stopping so the next engine can still run.
 	 */
 	private struct function startEngine( required struct engine, required string engineName ){
-		// Make sure the port is actually free first. Stopping a server returns before the old
-		// process lets go of the port, and starting the next one then fails for a reason that
-		// has nothing to do with the engine.
+		// A server stop command can finish before the process releases its port. Wait for the
+		// port so that the old process does not cause the next engine to fail.
 		waitForPortToFree( arguments.engineName );
 
 		var startFailed = false;
@@ -107,21 +106,21 @@ component extends="build-template.models.BaseKitService" {
 		if ( startFailed ) {
 			print
 				.line()
-				.boldLine( "Why a server will not start, usually:" )
-				.yellowLine( "  the file is missing from your project root" )
-				.yellowLine( "  another server still holds the port" )
-				.yellowLine( "  the engine could not be downloaded" )
+				.boldLine( "Common reasons that a server does not start:" )
+				.yellowLine( "  The server JSON file is missing from the project root." )
+				.yellowLine( "  Another server is still using the port." )
+				.yellowLine( "  CommandBox could not download the engine." )
 				.line()
-				.boldLine( "Try it by hand to see the real reason:" )
+				.boldLine( "Run this command to see the full error:" )
 				.yellowLine( "  box server start serverConfigFile=#arguments.engine.configFile#" )
 				.line()
 				.toConsole();
-			// The start may have got far enough to hold the port. Clear it, or the next
-			// engine in the sweep fails for a reason that has nothing to do with it.
+			// A failed start may still leave a process on the port. Stop it before starting
+			// the next engine.
 			stopEngine( arguments.engine.configFile );
 			return {
 				"ok"     : false,
-				"reason" : "would not start" & ( len( startError ) ? ": " & startError : "" )
+				"reason" : "The server did not start" & ( len( startError ) ? ": " & startError : "" )
 			};
 		}
 
@@ -129,9 +128,8 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Waits until nothing answers on the test port, so the next engine is not started while the
-	 * last one is still letting go of it. Gives up after a short wait and lets the start attempt
-	 * produce the real error.
+	 * Waits for the test port to become free. It stops waiting after one minute. The next start
+	 * attempt will report the error when the port is still in use.
 	 */
 	private function waitForPortToFree( required string engineName ){
 		var probeUrl = variables.config.probeUrl();
@@ -145,14 +143,13 @@ component extends="build-template.models.BaseKitService" {
 			sleep( 5000 );
 		}
 		print
-			.yellowLine( "Something still answers on the port. Starting #arguments.engineName# anyway." )
+			.yellowLine( "The port is still in use. Trying to start #arguments.engineName# anyway." )
 			.toConsole();
 	}
 
 	/**
-	 * Waits until the site answers, so the suite never runs against a server that is still
-	 * starting up. A half-started app produces failures that look real but are not. Returns
-	 * { ok, reason } so the sweep can record the failure and move on to the next engine.
+	 * Waits for the site before running tests. Tests could fail for the wrong reason if the app
+	 * is still starting. It returns { ok, reason } so another engine can run after a failure.
 	 */
 	private struct function warmUp( required struct engine, required string engineName ){
 		var attempts     = variables.settings.warmup.attempts;
@@ -163,7 +160,7 @@ component extends="build-template.models.BaseKitService" {
 		var lastStatus = 0;
 		for ( var attempt = 1; attempt <= attempts; attempt++ ) {
 			lastStatus = probe( probeUrl, 60 );
-			// Anything in the 200s or 300s means the site answered.
+			// Any status from 200 through 399 means that the site answered.
 			if ( lastStatus >= 200 && lastStatus < 400 ) {
 				print.greenLine( "#arguments.engineName# is up (status #lastStatus#)." ).toConsole();
 				return { "ok" : true, "reason" : "" };
@@ -175,18 +172,18 @@ component extends="build-template.models.BaseKitService" {
 		print
 			.line()
 			.yellowLine(
-				"A repeating 500 usually means the app will not start on this engine. Start it by hand and read the log:"
+				"Repeated status 500 responses usually mean that the app cannot start on this engine. Run this command and read the server log:"
 			)
 			.yellowLine( "  box server start serverConfigFile=#arguments.engine.configFile#" )
 			.line()
 			.toConsole();
 
-		return { "ok" : false, "reason" : "never answered (last status: #lastStatus#)" };
+		return { "ok" : false, "reason" : "The server did not answer (last status: #lastStatus#)" };
 	}
 
 	/**
-	 * Stops every listed engine, ignoring failures. At most one is running, and stopping one
-	 * that is not running only prints a complaint.
+	 * Tries to stop every configured engine. Only one engine should be running. Errors do not
+	 * stop this cleanup.
 	 */
 	private function stopAllEngines(){
 		print.blueLine( "Stopping any running server..." ).toConsole();
@@ -196,14 +193,14 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Stops one server quietly. A failure here never matters: either it was not running, or
-	 * the next start will complain about the port anyway.
+	 * Tries to stop one server without reporting an error. The next server start reports a port
+	 * error if the old server did not stop.
 	 */
 	private function stopEngine( required string configFile ){
 		try {
 			command( "server stop" ).params( serverConfigFile = arguments.configFile ).run();
 		} catch ( any ignoredException ) {
-			// Not running, nothing to do.
+			// The server is already stopped or could not be stopped. Continue cleanup.
 		}
 	}
 
@@ -230,8 +227,7 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Prints a line per engine and ends the run. Stops with an error when any engine failed, so
-	 * the exit code still says the sweep was not clean.
+	 * Prints the result for each engine. It returns an error when one or more engines failed.
 	 */
 	private function report( required array results, required numeric started ){
 		var totalMinutes  = numberFormat( ( getTickCount() - arguments.started ) / 60000, "0.9" );

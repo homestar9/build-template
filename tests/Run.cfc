@@ -1,10 +1,10 @@
 /**
- * Runs the build-kit TestBox suite inside CommandBox.
+ * Runs the build-template TestBox tests in CommandBox.
  *
- * Run `box run-script test` from the repository root. This runner does not need a web server.
- * It loads this checkout as the build-template module, so the specs exercise the code in the
- * working copy rather than any globally installed copy, then runs every spec and prints a
- * text report. It returns an error when a test fails.
+ * Run `box run-script test` from the repository root. The tests do not need a web server. This
+ * runner loads the current checkout as the build-template module. The tests use this working
+ * copy instead of a globally installed copy. It runs all tests, prints a text report, and
+ * returns an error when any test fails.
  */
 component {
 
@@ -42,9 +42,9 @@ component {
 	}
 
 	/**
-	 * Registers this checkout as the build-template module. A copy installed globally under
-	 * the same name is unloaded first; loadModule() does nothing when the name is taken, and
-	 * the tests must run against the working copy.
+	 * Loads this checkout as the build-template module. It first unloads a global module with
+	 * the same name. loadModule() will not replace a loaded module, and the tests must use this
+	 * working copy.
 	 */
 	private void function loadKit( required string repositoryRoot ){
 		var moduleService = wirebox.getInstance( "moduleService" );

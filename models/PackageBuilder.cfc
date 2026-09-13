@@ -1,18 +1,18 @@
 /**
- * Builds and checks the package that can be published.
+ * Builds and checks a package before publishing.
  *
- * `box release package` runs the tests, copies allowed source files into a clean staging
- * folder, replaces version tokens, creates a ZIP, verifies the ZIP, and writes checksum files.
+ * `box release package` runs the tests and copies allowed source files into an empty temporary
+ * folder. It replaces version placeholders, creates a zip file, checks its contents, and
+ * writes checksum files.
  *
- * Build files are written under .artifacts/<slug>/<version>/. Use `--skipTests` only when the
- * same source has already passed its tests. Project settings come from build.json.
+ * It writes build files under .artifacts/<slug>/<version>/. Use `--skipTests` only when the
+ * same source code already passed the tests. Project settings come from build.json.
  */
 component extends="build-template.models.BaseKitService" {
 
 	/**
-	 * Remembers the project and where its staging and artifact folders go. The folders are
-	 * cleared when the first build step runs, not here, so simply creating this component
-	 * changes nothing.
+	 * Stores the project and its temporary and artifact folder paths. It does not change either
+	 * folder until the first build step runs.
 	 */
 	function forProject( required any config ){
 		super.forProject( arguments.config );
@@ -23,14 +23,14 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Runs the tests, builds the package, and writes checksums.
+	 * Runs tests, builds the package, and writes checksum files.
 	 *
-	 * @projectName The name used for the package folder and zip. Defaults to the box.json slug.
-	 * @version     The version being built. Defaults to the box.json version.
-	 * @buildID     The build identifier. When blank, uses the short git commit hash.
-	 * @branch      The branch being built. When blank, reads the current branch.
-	 * @skipTests   Skip the test suite for this run only. Use only when this version has already
-	 *              been tested. It prints a warning, because an untested build is a real risk.
+	 * @projectName The package folder and zip filename. The default is the box.json slug.
+	 * @version     The version to build. The default is the box.json version.
+	 * @buildID     The build ID. The default is the short Git commit hash.
+	 * @branch      The branch to build. The default is the current branch.
+	 * @skipTests   Skips tests for this run and prints a warning. Use it only after this version
+	 *              has passed its tests.
 	 */
 	function run(
 		string projectName = "",
@@ -46,8 +46,8 @@ component extends="build-template.models.BaseKitService" {
 			var reason = arguments.skipTests ? "requested with skipTests" : "disabled in build.json";
 			print
 				.line()
-				.boldYellowLine( "WARNING: the test suite was skipped (#reason#)." )
-				.yellowLine( "This package has not been tested by this build." )
+				.boldYellowLine( "WARNING: This build skipped the tests (#reason#)." )
+				.yellowLine( "This build did not test the package." )
 				.line()
 				.toConsole();
 		} else {
@@ -55,38 +55,38 @@ component extends="build-template.models.BaseKitService" {
 			runTests();
 		}
 
-		// Map the project so a build can load the project's own components if it needs to.
+		// Add a mapping so build steps can load components from the project.
 		variables.fileSystemUtil.createMapping( arguments.projectName, variables.root );
 
 		buildSource( argumentCollection = arguments );
 		buildChecksums();
 
-		print.line().boldMagentaLine( "Build finished. The package is in #variables.exportsDir#" ).toConsole();
+		print.line().boldMagentaLine( "Build complete. Package files are in #variables.exportsDir#" ).toConsole();
 	}
 
 	/**
-	 * Runs the test suite and stops the build when anything fails.
+	 * Runs the tests and stops the build when they fail.
 	 */
 	function runTests(){
-		print.blueLine( "Running the test suite, please wait..." ).toConsole();
+		print.blueLine( "Running the tests..." ).toConsole();
 
 		try {
 			command( "testbox run" )
 				.params( runner = variables.settings.testRunner, verbose = false )
 				.run();
 		} catch ( any exception ) {
-			return stop( "Stopping: the tests failed. Fix them, or use --skipTests to build anyway." );
+			return stop( "The tests failed. Fix them, or use --skipTests to build without running them." );
 		}
 	}
 
 	/**
-	 * Creates and verifies the source package without running the test suite.
+	 * Creates and checks the source package without running tests.
 	 *
-	 * @projectName The name used for the package folder and zip.
-	 * @version     The version being built.
-	 * @buildID     The build identifier.
-	 * @branch      The branch being built.
-	 * @skipTests   Accepted so this can be called with the same arguments as run().
+	 * @projectName The package folder and zip filename.
+	 * @version     The version to build.
+	 * @buildID     The build ID.
+	 * @branch      The branch to build.
+	 * @skipTests   Allows this function to accept the same arguments as run().
 	 */
 	function buildSource(
 		string projectName = "",
@@ -101,7 +101,7 @@ component extends="build-template.models.BaseKitService" {
 		print
 			.line()
 			.boldMagentaLine(
-				"Building #arguments.projectName# #arguments.version#+#arguments.buildID# from the #arguments.branch# branch."
+				"Building #arguments.projectName# #arguments.version#+#arguments.buildID# from branch #arguments.branch#."
 			)
 			.toConsole();
 
@@ -121,7 +121,7 @@ component extends="build-template.models.BaseKitService" {
 
 	// BUILD STEPS
 
-	/** Empties the staging and artifact folders once per build. */
+	/** Empties and creates the temporary and artifact folders once for each build. */
 	private void function prepare(){
 		if ( variables.prepared ) {
 			return;
@@ -148,7 +148,7 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	private void function copySourceToStaging(){
-		print.blueLine( "Copying source into the staging folder..." ).toConsole();
+		print.blueLine( "Copying source files to the temporary build folder..." ).toConsole();
 		copy( variables.root, variables.projectBuildDir );
 	}
 
@@ -159,7 +159,7 @@ component extends="build-template.models.BaseKitService" {
 	){
 		fileWrite(
 			"#variables.projectBuildDir#/#arguments.projectName#-#arguments.version#+#arguments.buildID#",
-			"Built from commit #arguments.buildID# on #dateTimeFormat( now(), "full" )#"
+			"Built from commit #arguments.buildID# at #dateTimeFormat( now(), "full" )#"
 		);
 	}
 
@@ -168,7 +168,7 @@ component extends="build-template.models.BaseKitService" {
 		required string buildID,
 		required string branch
 	){
-		print.greenLine( "Stamping version #arguments.version#" ).toConsole();
+		print.greenLine( "Adding version #arguments.version#" ).toConsole();
 		command( "tokenReplace" )
 			.params(
 				path        = "#variables.projectBuildDir#/**",
@@ -178,7 +178,7 @@ component extends="build-template.models.BaseKitService" {
 			.run();
 
 		var isReleaseBranch = arguments.branch == variables.settings.branch;
-		print.greenLine( "Stamping build identifier #arguments.buildID#" ).toConsole();
+		print.greenLine( "Adding build ID #arguments.buildID#" ).toConsole();
 		command( "tokenReplace" )
 			.params(
 				path        = "#variables.projectBuildDir#/**",
@@ -190,7 +190,7 @@ component extends="build-template.models.BaseKitService" {
 
 	private string function createPackageZip( required string projectName, required string version ){
 		var zipPath = "#variables.exportsDir#/#arguments.projectName#-#arguments.version#.zip";
-		print.greenLine( "Zipping to #zipPath#" ).toConsole();
+		print.greenLine( "Creating zip file #zipPath#" ).toConsole();
 		cfzip(
 			action    = "zip",
 			file      = zipPath,
@@ -202,15 +202,15 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	private void function copyPackageManifest(){
-		// This copy lets someone inspect the published metadata without opening the ZIP.
+		// Copy box.json next to the zip so people can read package details without opening it.
 		fileCopy( "#variables.projectBuildDir#/box.json", variables.exportsDir );
 	}
 
 	// SHARED HELPERS
 
 	/**
-	 * Fills in any argument left blank: the slug and version from box.json, the branch and
-	 * commit from git. Doing it here means every entry point behaves the same way.
+	 * Fills blank arguments with project values. The slug and version come from box.json. The
+	 * branch and commit come from Git. Both public entry points use these same defaults.
 	 */
 	private void function fillDefaults( required struct args ){
 		if ( !len( trim( arguments.args.projectName ?: "" ) ) ) {
@@ -228,9 +228,9 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Reads the current branch from .git/HEAD without needing the git program. Falls back to
-	 * the release branch from build.json when HEAD cannot be read, which happens when building
-	 * from a copy with no .git folder.
+	 * Reads the current branch directly from .git/HEAD without running Git. It returns the
+	 * release branch from build.json when .git/HEAD cannot be read. This fallback supports
+	 * source copies that do not include a .git folder.
 	 */
 	private string function getCurrentBranch(){
 		var headFile = variables.root & "/.git/HEAD";
@@ -241,14 +241,13 @@ component extends="build-template.models.BaseKitService" {
 		if ( left( head, 16 ) == "ref: refs/heads/" ) {
 			return replace( head, "ref: refs/heads/", "" );
 		}
-		// A detached HEAD holds a commit hash, not a branch name.
+		// A detached HEAD contains a commit hash instead of a branch name.
 		return variables.settings.branch;
 	}
 
 	/**
-	 * Reads the short commit hash HEAD points at, straight from the .git folder so the git
-	 * program is not needed and it still works from an extracted copy. Returns "nocommit" when
-	 * there is nothing to read.
+	 * Reads the short commit hash directly from the .git folder without running Git. It returns
+	 * "nocommit" when the source does not contain a readable commit.
 	 */
 	private string function getCurrentCommit(){
 		var headFile = variables.root & "/.git/HEAD";
@@ -259,8 +258,8 @@ component extends="build-template.models.BaseKitService" {
 		var commitHash = "";
 
 		if ( left( head, 5 ) == "ref: " ) {
-			// The usual case: HEAD names a branch, and the hash sits in .git/<ref>, or in
-			// .git/packed-refs once git has tidied it away.
+			// HEAD usually names a branch. Its commit hash is in .git/<ref> or in
+			// .git/packed-refs after Git combines reference files.
 			var gitReference  = trim( mid( head, 6, len( head ) ) );
 			var referenceFile = variables.root & "/.git/" & gitReference;
 			if ( fileExists( referenceFile ) ) {
@@ -270,7 +269,7 @@ component extends="build-template.models.BaseKitService" {
 				if ( fileExists( packedFile ) ) {
 					for ( var packedReferenceLine in listToArray( fileRead( packedFile ), chr( 10 ) ) ) {
 						var line = trim( packedReferenceLine );
-						// Each line reads "<hash> <ref>". Skip comments and peeled tag lines.
+						// Each line uses "<hash> <ref>". Ignore comments and resolved tag lines.
 						if ( len( line ) && left( line, 1 ) != "##" && left( line, 1 ) != "^" && right( line, len( gitReference ) ) == gitReference ) {
 							commitHash = listFirst( line, " " );
 							break;
@@ -279,7 +278,7 @@ component extends="build-template.models.BaseKitService" {
 				}
 			}
 		} else {
-			// A detached HEAD already holds the hash.
+			// A detached HEAD contains the commit hash directly.
 			commitHash = head;
 		}
 
@@ -287,27 +286,28 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Stops the build with a clear message when the test server is not answering. Kept separate
-	 * from runTests() so "the server is not running" never reads as "your tests failed".
+	 * Stops the build when the test server does not answer. This separate check reports a server
+	 * problem instead of incorrectly reporting a test failure.
 	 */
 	private function ensureTestRunnerReachable(){
 		var probeUrl   = variables.config.probeUrl();
 		var statusCode = probe( probeUrl, 15 );
-		// Anything in the 200s or 300s means the site answered.
+		// Any status from 200 through 399 means that the site answered.
 		if ( statusCode < 200 || statusCode >= 400 ) {
 			return stop(
-				"No answer from the test server at #probeUrl# (status #statusCode#). "
-				& "Start a server first, then run this again. "
-				& "To build without running the tests, add --skipTests."
+				"The test server at #probeUrl# did not answer (status #statusCode#). "
+				& "Start the server, and then run this command again. "
+				& "Use --skipTests to build without running tests."
 			);
 		}
 	}
 
 	/**
-	 * Writes SHA-512 and MD5 files next to the zip so anyone can confirm a download is intact.
+	 * Writes SHA-512 and MD5 files next to the zip. These checksums can show whether a download
+	 * changed or became damaged.
 	 */
 	private function buildChecksums(){
-		print.greenLine( "Writing checksums" ).toConsole();
+		print.greenLine( "Writing checksum files" ).toConsole();
 		command( "checksum" )
 			.params(
 				path      = "#variables.exportsDir#/*.zip",
@@ -327,12 +327,11 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Stops the build when the zip holds fewer files than the staging folder.
-	 *
-	 * This is deliberately simple: it counts files rather than working out what went wrong.
-	 * Counting catches any cause, including the one that started it. A published module once
-	 * shipped without several folders because an ignore rule quietly matched them, and nothing
-	 * failed until every app that installed it broke on startup.
+	 * Stops the build when the zip and temporary folder contain different numbers of files.
+ *
+	 * This check counts files but does not identify the missing file. It catches any rule that
+	 * removes source files from the zip. This check was added after an ignore rule removed
+	 * required folders from a published module.
 	 */
 	private function verifyZip( required string zipPath ){
 		cfzip( action = "list", file = arguments.zipPath, name = "local.zipEntries" );
@@ -343,7 +342,7 @@ component extends="build-template.models.BaseKitService" {
 			} )
 			.len();
 
-		// A zip lists folders as entries too, so only count the files.
+		// A zip also lists folder entries. Count only file entries.
 		var zippedCount = 0;
 		for ( var row in local.zipEntries ) {
 			if ( row.type == "file" ) {
@@ -353,26 +352,26 @@ component extends="build-template.models.BaseKitService" {
 
 		if ( zippedCount != stagedCount ) {
 			return stop(
-				"The zip is incomplete: #stagedCount# files were staged but the zip holds #zippedCount#. "
-				& "Check .gitignore and the excludes in build.json for a rule matching source files. "
-				& "Staging folder: #variables.projectBuildDir#"
+				"The zip is incomplete. The temporary folder has #stagedCount# files, but the zip has #zippedCount#. "
+				& "Check .gitignore and the build.json exclusion rules for a rule that matches source files. "
+				& "Temporary folder: #variables.projectBuildDir#"
 			);
 		}
 
-		print.greenLine( "Checked: the zip holds all #zippedCount# staged files." ).toConsole();
+		print.greenLine( "Zip check passed. It contains all #zippedCount# temporary files." ).toConsole();
 	}
 
 	/**
-	 * Copies the project into the staging folder, leaving out anything the excludes match.
-	 * Written by hand because directoryCopy with a filter is unreliable on Lucee.
-	 *
-	 * Only top-level names are tested. A folder that survives is copied whole, so a file
-	 * inside it cannot be excluded from here.
+	 * Copies the project into the temporary folder and skips matching exclusion rules. This
+	 * custom copy is needed because a filtered directoryCopy is unreliable on Lucee.
+ *
+	 * It checks only top-level names. When a folder is allowed, it copies every file inside
+	 * that folder. These rules cannot exclude one nested file from an allowed folder.
 	 */
 	private function copy( required string src, required string target ){
 		var excludes = variables.config.allExcludes();
-		// Hold this in a plain variable: inside the closures below, "arguments" means the
-		// closure's own arguments, so arguments.target would be missing.
+		// Store these values outside the functions below. Inside those functions, "arguments"
+		// refers to the inner function and does not contain target.
 		var targetDir = arguments.target;
 		var printer   = variables.print;
 
@@ -403,24 +402,22 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Turns a full path into its name relative to the project root, for example
-	 * "models" or "box.json".
-	 *
-	 * Both sides are put into the same shape first. directoryList returns paths using the
-	 * system separator, so comparing them against a path built with a different separator
-	 * quietly matches nothing and leaves the full path in place.
+	 * Returns a path relative to the project root, such as "models" or "box.json".
+ *
+	 * It changes both paths to use forward slashes before comparing them. directoryList uses
+	 * the operating system's separator. Paths with different separators would not match.
 	 */
 	private string function relativeName( required string path ){
 		var normalisedPath = replace( arguments.path, "\", "/", "all" );
 		var normalisedRoot = replace( variables.root, "\", "/", "all" );
 
 		var name = replaceNoCase( normalisedPath, normalisedRoot, "", "one" );
-		// Drop the separators left at either end.
+		// Remove any separators left at the start or end.
 		return reReplace( reReplace( name, "^[\\/]+", "" ), "[\\/]+$", "" );
 	}
 
 	/**
-	 * Creates .artifacts/<name>/<version>/ and remembers it for the rest of the build.
+	 * Creates .artifacts/<name>/<version>/ and stores its path for the current build.
 	 */
 	private function ensureExportDir( required string projectName, required string version ){
 		if ( structKeyExists( variables, "exportsDir" ) && directoryExists( variables.exportsDir ) ) {

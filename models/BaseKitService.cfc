@@ -1,14 +1,14 @@
 /**
- * The helpers every workflow component shares.
+ * Provides shared tools for model components.
  *
- * A component in models/ is not a command, so CommandBox does not hand it print, shell, or
- * command(). This base injects those from WireBox and adds the small things the workflows
- * need: stopping with a readable message, finding the kit's own files, running other
- * CommandBox commands, and probing a URL.
+ * A model component is not a CommandBox command. CommandBox does not automatically give it a
+ * print buffer, shell, or command() function. This base component gets those tools from
+ * WireBox. It also provides helpers for errors, kit file paths, other CommandBox commands,
+ * and URL checks.
  *
- * Workflow components never call error(). They throw a BuildKit exception, and the command
- * that called them turns it into error(), so the same components can be tested without a
- * running command.
+ * Model components throw a BuildKit exception instead of calling error(). The command that
+ * started the model converts that exception into a command error. This design lets tests use
+ * model components without running a command.
  */
 component {
 
@@ -19,9 +19,9 @@ component {
 	property name="formatterUtil"  inject="Formatter";
 
 	/**
-	 * Attaches the loaded project so the workflow knows its root and settings.
+	 * Gives the component a loaded project and its settings.
 	 *
-	 * @config A loaded ProjectConfig.
+	 * @config The loaded ProjectConfig.
 	 */
 	function forProject( required any config ){
 		variables.config   = arguments.config;
@@ -31,10 +31,10 @@ component {
 	}
 
 	/**
-	 * Uses the caller's print buffer instead of a fresh one, so output from several components
-	 * comes out in order and nothing is left unflushed when the command ends.
+	 * Uses the caller's print buffer. Shared use keeps output from several components in order.
+	 * It also makes sure the command prints all buffered text before it ends.
 	 *
-	 * @printer A CommandBox print buffer.
+	 * @printer The CommandBox print buffer to use.
 	 */
 	function usePrinter( required any printer ){
 		variables.print = arguments.printer;
@@ -42,9 +42,9 @@ component {
 	}
 
 	/**
-	 * Creates another workflow component for the same project, sharing this one's printer.
+	 * Creates another model component for the same project and print buffer.
 	 *
-	 * @name The component name, for example "PackageBuilder".
+	 * @name The component name, such as "PackageBuilder".
 	 */
 	function kitService( required string name ){
 		var service = variables.wirebox.getInstance( arguments.name & "@build-template" ).usePrinter( variables.print );
@@ -55,24 +55,24 @@ component {
 	}
 
 	/**
-	 * Starts a CommandBox command the same way a command would: command( "publish" ).run().
+	 * Creates a CommandBox command runner, such as command( "publish" ).run().
 	 *
-	 * @name The command, for example "testbox run".
+	 * @name The command name, such as "testbox run".
 	 */
 	function command( required string name ){
 		return variables.wirebox.getInstance( name = "CommandDSL", initArguments = { name : arguments.name } );
 	}
 
 	/**
-	 * A full path inside the installed kit, for example kitPath( "templates/RELEASE.md" ).
+	 * Returns a full path inside the installed kit.
 	 *
-	 * @relative A path relative to the kit's own folder.
+	 * @relative A kit-relative path, such as "templates/RELEASE.md".
 	 */
 	string function kitPath( string relative = "" ){
 		return expandPath( "/build-template/" & arguments.relative );
 	}
 
-	/** The installed kit's own version, from its box.json. Empty when it cannot be read. */
+	/** Returns the installed kit version from its box.json. Returns an empty string on failure. */
 	string function kitVersion(){
 		try {
 			return trim( deserializeJSON( fileRead( kitPath( "box.json" ) ) ).version ?: "" );
@@ -82,25 +82,25 @@ component {
 	}
 
 	/**
-	 * Stops the workflow with one readable line. The calling command reports it as an error.
+	 * Stops the model with a one-line message. The calling command reports the error.
 	 *
-	 * @message What went wrong.
-	 * @type    The exception type; anything starting with BuildKit. is reported without a trace.
+	 * @message A description of the problem.
+	 * @type    The exception type. Types that start with BuildKit. are shown without a stack trace.
 	 */
 	function stop( required string message, string type = "BuildKit.Stop" ){
 		throw( type = arguments.type, message = arguments.message );
 	}
 
 	/**
-	 * Stops the workflow, printing guidance that spans several lines first.
+	 * Prints detailed instructions and then stops the model with a one-line error.
+ *
+	 * CommandBox error() removes line breaks from a message. This function prints the detailed
+	 * instructions first so they keep their line breaks. It uses only the short summary for the
+	 * final command error.
 	 *
-	 * CommandBox's error() removes line breaks from its message, so anything longer than a
-	 * sentence arrives as one run-together block. The guidance is printed first, where it keeps
-	 * its shape, and the error is left with the single line that says what went wrong.
-	 *
-	 * @summary One line saying what went wrong.
-	 * @detail  Lines of guidance to print first.
-	 * @heading A short label for the guidance.
+	 * @summary A one-line description of the problem.
+	 * @detail  The instruction lines to print before the error.
+	 * @heading A short heading for the instructions.
 	 */
 	function fail( required string summary, array detail = [], string heading = "What to do" ){
 		if ( arrayLen( arguments.detail ) ) {
@@ -114,10 +114,10 @@ component {
 	}
 
 	/**
-	 * Turns a struct into readable JSON, using CommandBox's formatter when available so the
-	 * result matches how it writes box.json.
+	 * Converts a struct to readable JSON. It uses the CommandBox formatter when available so
+	 * the result matches files written by CommandBox.
 	 *
-	 * @data The struct to write.
+	 * @data The struct to convert.
 	 */
 	string function formatJSON( required struct data ){
 		var json = serializeJSON( arguments.data );
@@ -129,11 +129,11 @@ component {
 	}
 
 	/**
-	 * Asks a URL for its status code without following redirects. Returns 0 when nothing
-	 * answers, so callers can treat "no server" and "server error" differently.
+	 * Requests a URL without following redirects and returns the HTTP status code. It returns
+	 * 0 when the request fails. Callers can then tell a missing server from an HTTP error.
 	 *
-	 * @url     The address to ask.
-	 * @timeout Seconds to wait.
+	 * @url     The URL to request.
+	 * @timeout The maximum number of seconds to wait.
 	 */
 	numeric function probe( required string url, numeric timeout = 15 ){
 		var httpResult = "";

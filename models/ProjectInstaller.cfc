@@ -1,12 +1,12 @@
 /**
- * Sets a project up for the build kit.
+ * Sets up a project for build-template.
  *
- * `box release init` writes build.json with settings detected from the project and creates a
- * changelog when the project has none. With `--docs` it copies the RELEASE.md guide into the
- * project, and with `--ci` the GitHub Actions workflow.
+ * `box release init` creates build.json with settings found in the project. It also creates a
+ * changelog when the project does not have one. `--docs` copies the RELEASE.md guide.
+ * `--ci` copies the GitHub Actions workflow.
  *
- * It keeps existing files unless `--force` is passed. It detects useful defaults from
- * box.json, Git, and root-level server JSON files.
+ * It keeps existing files unless you use `--force`. It finds default settings in box.json,
+ * Git, and server JSON files in the project root.
  */
 component extends="build-template.models.BaseKitService" {
 
@@ -14,20 +14,20 @@ component extends="build-template.models.BaseKitService" {
 	property name="processRunner"   inject="ProcessRunner@build-template";
 
 	/**
-	 * Runs each setup step and prints the detected settings.
+	 * Runs the setup steps and prints the detected settings.
 	 *
-	 * @root  The project root.
-	 * @force Overwrite files that already exist.
-	 * @docs  Copy RELEASE.md, the release guide, into the project root.
-	 * @ci    Copy the GitHub Actions release workflow to .github/workflows/release.yml.
+	 * @root  The project root folder.
+	 * @force Replaces files that already exist.
+	 * @docs  Copies the RELEASE.md guide to the project root.
+	 * @ci    Copies the GitHub Actions workflow to .github/workflows/release.yml.
 	 */
 	function run( required string root, boolean force = false, boolean docs = false, boolean ci = false ){
 		variables.root = reReplace( replace( arguments.root, "\", "/", "all" ), "/+$", "" );
 
-		print.line().boldLine( "Setting up the build kit" ).line( repeatString( "-", 60 ) ).toConsole();
+		print.line().boldLine( "Setting up build-template" ).line( repeatString( "-", 60 ) ).toConsole();
 
 		if ( !fileExists( variables.root & "/box.json" ) ) {
-			return stop( "No box.json found at #variables.root#. Run this from a CommandBox package." );
+			return stop( "No box.json file was found at #variables.root#. Run this command inside a CommandBox package." );
 		}
 
 		writeBuildJSON( arguments.force );
@@ -41,27 +41,27 @@ component extends="build-template.models.BaseKitService" {
 
 		print
 			.line( repeatString( "-", 60 ) )
-			.boldGreenLine( "Done." )
+			.boldGreenLine( "Setup complete." )
 			.line()
 			.boldLine( "Next steps:" )
-			.line( "  1. Look through build.json and adjust anything that is wrong." )
-			.line( "  2. Check you are ready:   box release check" )
-			.line( "  3. Rehearse a release:    box release run --dryRun" )
+			.line( "  1. Review build.json and correct any wrong settings." )
+			.line( "  2. Check the project:     box release check" )
+			.line( "  3. Practice a release:    box release run --dryRun" )
 			.toConsole();
 		if ( !arguments.docs ) {
-			print.line().line( "For the full routine, run: box release help   (or add --docs to copy RELEASE.md in)" ).toConsole();
+			print.line().line( "Run box release help for the full process. Use --docs to copy RELEASE.md." ).toConsole();
 		}
 	}
 
 	// SETUP STEPS
 
 	/**
-	 * Writes build.json, filling in what it can work out from the project.
+	 * Creates build.json and fills in settings found in the project.
 	 */
 	private function writeBuildJSON( required boolean force ){
 		var path = variables.root & "/build.json";
 		if ( fileExists( path ) && !arguments.force ) {
-			print.yellowLine( "  skip  build.json already exists (use --force to replace it)" ).toConsole();
+			print.yellowLine( "  skip  build.json already exists. Use --force to replace it." ).toConsole();
 			return;
 		}
 
@@ -84,22 +84,22 @@ component extends="build-template.models.BaseKitService" {
 		};
 
 		fileWrite( path, formatJSON( settings ) );
-		print.greenLine( "  made  build.json" ).toConsole();
+		print.greenLine( "  create  build.json" ).toConsole();
 		print.line( "        project type:   #settings.projectType#" ).toConsole();
 		print.line( "        release branch: #settings.branch#" ).toConsole();
 		print.line( "        test runner:    #settings.testRunner#" ).toConsole();
-		print.line( "        engines:        #arrayLen( settings.engines )# found" ).toConsole();
+		print.line( "        engines found:  #arrayLen( settings.engines )#" ).toConsole();
 	}
 
 	/**
-	 * Creates a changelog with an [Unreleased] section when the project has none.
+	 * Creates a changelog with an [Unreleased] section.
 	 */
 	private function writeChangelog( required boolean force ){
 		var name = detectChangelogName();
 		var path = variables.root & "/" & name;
 
 		if ( fileExists( path ) && !arguments.force ) {
-			print.yellowLine( "  skip  #name# already exists" ).toConsole();
+			print.yellowLine( "  skip  #name# already exists." ).toConsole();
 			return;
 		}
 
@@ -109,15 +109,15 @@ component extends="build-template.models.BaseKitService" {
 		} else {
 			fileWrite( path, defaultChangelog() );
 		}
-		print.greenLine( "  made  #name#" ).toConsole();
+		print.greenLine( "  create  #name#" ).toConsole();
 	}
 
 	/**
-	 * Copies one of the kit's templates into the project.
+	 * Copies one template from the kit into the project.
 	 *
-	 * @templateName The file under templates/.
-	 * @relative     Where it goes, relative to the project root.
-	 * @force        Overwrite an existing file.
+	 * @templateName The filename under templates/.
+	 * @relative     The destination path relative to the project root.
+	 * @force        Replaces the destination when it already exists.
 	 */
 	private function copyTemplate( required string templateName, required string relative, required boolean force ){
 		var source = kitPath( "templates/" & arguments.templateName );
@@ -127,7 +127,7 @@ component extends="build-template.models.BaseKitService" {
 			return;
 		}
 		if ( fileExists( target ) && !arguments.force ) {
-			print.yellowLine( "  skip  #arguments.relative# already exists" ).toConsole();
+			print.yellowLine( "  skip  #arguments.relative# already exists." ).toConsole();
 			return;
 		}
 		var targetDir = getDirectoryFromPath( target );
@@ -135,15 +135,15 @@ component extends="build-template.models.BaseKitService" {
 			directoryCreate( targetDir, true, true );
 		}
 		fileCopy( source, target );
-		print.greenLine( "  made  #arguments.relative#" ).toConsole();
+		print.greenLine( "  create  #arguments.relative#" ).toConsole();
 	}
 
 	// PROJECT DETECTION
 
 	/**
-	 * Uses Gitflow's configured production branch when present. Otherwise reads the current
-	 * symbolic branch through git, which also works in linked worktrees, and falls back to main
-	 * for a detached checkout or a folder without usable git metadata.
+	 * Returns Gitflow's production branch when it is configured. Otherwise, it asks Git for the
+	 * current branch. This works in linked worktrees. It returns main for a detached checkout
+	 * or when Git cannot provide a branch.
 	 */
 	private string function detectBranch(){
 		var production = variables.processRunner.run( "git", [ "config", "--get", "gitflow.branch.master" ], variables.root );
@@ -159,12 +159,12 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Returns the name of the changelog the project already has, spelled exactly as it is on
-	 * disk. Falls back to CHANGELOG.md, which is the usual spelling.
-	 *
-	 * It reads the real directory listing rather than testing names one at a time. On Windows
-	 * and macOS, fileExists( "changelog.md" ) is true even when the file is really called
-	 * CHANGELOG.md, and a wrong spelling would work locally while failing on Linux.
+	 * Returns the exact filename of an existing changelog. It returns CHANGELOG.md when no
+	 * changelog exists.
+ *
+	 * It reads the directory instead of checking possible names with fileExists(). Windows and
+	 * macOS may report that changelog.md exists when the real name is CHANGELOG.md. That wrong
+	 * letter case can fail on Linux.
 	 */
 	private string function detectChangelogName(){
 		for ( var name in directoryList( variables.root, false, "name", "*.md" ) ) {
@@ -176,8 +176,7 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Finds the server json files in the project root and turns them into engine entries, with
-	 * a readable name worked out from each file name.
+	 * Finds server JSON files in the project root and creates an engine entry for each file.
 	 */
 	private array function detectEngines(){
 		var engines = [];
@@ -194,8 +193,8 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Reads one server file and asks ProjectSettingsService to choose its display name.
-	 * A malformed file still appears in the generated settings with a name based on its file.
+	 * Reads one server file and gets its display name from ProjectSettingsService. An invalid
+	 * server file still gets an entry with a name based on its filename.
 	 */
 	private string function engineName( required string file ){
 		var serverSettings = {};
@@ -203,30 +202,29 @@ component extends="build-template.models.BaseKitService" {
 			var parsedSettings = deserializeJSON( fileRead( variables.root & "/" & arguments.file ) );
 			serverSettings = isStruct( parsedSettings ) ? parsedSettings : {};
 		} catch ( any ignoredException ) {
-			// The server command will report invalid JSON when someone starts this server.
+			// The server command will report the invalid JSON when it starts this server.
 		}
 
 		return variables.projectSettings.engineName( arguments.file, serverSettings );
 	}
 
 	/**
-	 * The starter changelog, used when the templates folder is missing.
+	 * Returns a basic changelog when the template file is missing.
 	 */
 	private string function defaultChangelog(){
 		var lf = chr( 10 );
-		// Build the markdown headings from chr( 35 ) rather than writing hashes in the string.
-		// A # starts a variable in CFML, so hashes have to be doubled, and counting them for a
-		// three-hash heading is a good way to write a bug.
+		// Build Markdown headings with chr( 35 ). A # starts a CFML variable, so a literal # in
+		// a string must be doubled. chr( 35 ) makes the number of heading marks clear.
 		var h1 = repeatString( chr( 35 ), 1 ) & " ";
 		var h2 = repeatString( chr( 35 ), 2 ) & " ";
 		var h3 = repeatString( chr( 35 ), 3 ) & " ";
 
 		return h1 & "Changelog" & lf & lf
-			& "All notable changes to this project are written down here." & lf & lf
-			& "The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)," & lf
-			& "and the version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html)." & lf & lf
+			& "This file lists the important changes to this project." & lf & lf
+			& "The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)." & lf
+			& "Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html)." & lf & lf
 			& h2 & "[Unreleased]" & lf & lf
 			& h3 & "Added" & lf & lf
-			& "- Write your changes here as you go." & lf;
+			& "- Add changes here while you work." & lf;
 	}
 }

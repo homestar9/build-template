@@ -1,9 +1,9 @@
-/** Locks the command signatures and model APIs that scripts and documentation depend on. */
+/** Checks command and model APIs used by scripts and documentation. */
 component extends="tests.support.KitSpec" {
 
 	function run(){
 		describe( "Public API", function(){
-			it( "keeps every command's parameters", function(){
+			it( "keeps all command parameters", function(){
 				var expectedParameters = {
 					"run"     : "version,dryRun,skipTests,existingTag,buildID",
 					"check"   : "",
@@ -22,7 +22,7 @@ component extends="tests.support.KitSpec" {
 				}
 			} );
 
-			it( "keeps every command's defaults", function(){
+			it( "keeps all command defaults", function(){
 				expectStringDefaults( "commands.release.run", [ "version", "buildID" ], "" );
 				for ( var flag in [ "dryRun", "skipTests", "existingTag" ] ) {
 					expect( argumentDefault( "commands.release.run", "run", flag ) ).toBeFalse();
@@ -44,7 +44,7 @@ component extends="tests.support.KitSpec" {
 				expect( argumentDefault( "commands.release.migrate", "run", "removeScripts" ) ).toBeFalse();
 			} );
 
-			it( "keeps every model's public functions", function(){
+			it( "keeps all public model functions", function(){
 				var expectedFunctions = {
 					"models.ProjectConfig"          : "allExcludes,boxJSON,commandExists,configPath,execNative,findBinary,get,getRoot,getSettings,init,isLegacyLayout,kitVersion,load,probeUrl,repoPath,slug,version",
 					"models.ProjectLocator"         : "configFile,findRoot",
@@ -119,7 +119,7 @@ component extends="tests.support.KitSpec" {
 		}
 		throw(
 			type    = "PublicApiSpec.MissingArgument",
-			message = "Could not find #arguments.componentPath#.#arguments.functionName# argument #arguments.argumentName#."
+			message = "Argument #arguments.argumentName# was not found on #arguments.componentPath#.#arguments.functionName#."
 		);
 	}
 }

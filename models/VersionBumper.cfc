@@ -1,11 +1,11 @@
 /**
- * Updates the project version and changelog for a release.
+ * Changes the project version and prepares its changelog for a release.
  *
- * `box release bump patch`, `minor`, or `major` updates the version in box.json and moves the
- * [Unreleased] notes into a dated section for the new version.
+ * `box release bump patch`, `minor`, or `major` changes the version in box.json. It moves the
+ * [Unreleased] notes into a dated section for that version.
  *
- * It does not commit, tag, or publish anything. Use `--dryRun` to preview the file changes.
- * Use `none` for a first release that already has the correct version number.
+ * It does not commit, tag, or publish. Use `--dryRun` to view the file changes without writing
+ * them. Use `none` when the first release already has the correct version.
  */
 component extends="build-template.models.BaseKitService" {
 
@@ -13,14 +13,13 @@ component extends="build-template.models.BaseKitService" {
 	property name="changelogService" inject="ChangelogService@build-template";
 
 	/**
-	 * Calculates both file changes before writing either file.
+	 * Calculates the box.json and changelog changes before writing either file.
 	 *
-	 * @level  How much to raise: major, minor, patch, prerelease, premajor, preminor, prepatch, none.
-	 * @preid  The prerelease label to use, such as beta or alpha. Only used by the pre levels.
-	 *         Defaults to beta when starting a prerelease.
-	 * @dryRun Show what would change without writing anything.
-	 * @allowPrereleaseRetarget Allow preminor to move an active prerelease to the next minor
-	 *                          version. Defaults to false to prevent accidental retargeting.
+	 * @level  The version change: major, minor, patch, prerelease, premajor, preminor, prepatch,
+	 *         or none.
+	 * @preid  The prerelease label, such as beta or alpha. New prereleases use beta by default.
+	 * @dryRun Shows the changes without writing any files.
+	 * @allowPrereleaseRetarget Allows preminor to change the target of an active prerelease.
 	 */
 	function run(
 		string level = "patch",
@@ -33,13 +32,13 @@ component extends="build-template.models.BaseKitService" {
 			return fail(
 				"Unknown level '#arguments.level#'.",
 				[
-					"major, minor, patch            raise the version. On a prerelease these settle on",
-					"                               the version it was leading up to.",
-					"prerelease                     step a prerelease forward, beta.3 to beta.4.",
-					"premajor, preminor, prepatch   start a prerelease, labelled beta unless you name one.",
-					"none                           keep the version and just date the changelog."
+					"major, minor, patch            change a normal version. For a prerelease, these",
+					"                               finish the version that the prerelease targets.",
+					"prerelease                     update a prerelease, such as beta.3 to beta.4.",
+					"premajor, preminor, prepatch   start a prerelease. The default label is beta.",
+					"none                           keep the version and date the changelog."
 				],
-				"The levels you can use"
+				"Valid version levels"
 			);
 		}
 
@@ -51,12 +50,12 @@ component extends="build-template.models.BaseKitService" {
 			&& !arguments.allowPrereleaseRetarget
 		) {
 			return fail(
-				"#currentVersion# is already a prerelease, so preminor was stopped before it could target the next minor version.",
+				"#currentVersion# is already a prerelease. preminor cannot change its target without permission.",
 				[
-					"box release bump prerelease                       advance the current prerelease",
-					"box release bump preminor --allowPrereleaseRetarget   deliberately target the next minor prerelease"
+					"box release bump prerelease                           update the current prerelease",
+					"box release bump preminor --allowPrereleaseRetarget   target the next minor version"
 				],
-				"Choose the intended prerelease action"
+				"Choose a prerelease action"
 			);
 		}
 		var newVersion   = currentVersion;
@@ -72,20 +71,20 @@ component extends="build-template.models.BaseKitService" {
 				);
 			}
 
-			// Calculate the complete changelog first. This prevents a partial update when the
-			// [Unreleased] section is missing or empty.
+			// Build the full changelog before changing either file. A missing or empty
+			// [Unreleased] section can then stop the command without leaving a partial update.
 			newChangelog = buildChangelog( newVersion, releaseDate );
 		} catch ( any exception ) {
 			if ( exception.type == "BuildVersion.NotPrerelease" ) {
 				return fail(
 					exception.message,
 					[
-						"box release bump preminor beta     the next minor release as a beta",
-						"box release bump preminor alpha    the same release with an alpha label",
-						"box release bump prepatch          a prerelease of the next patch",
-						"box release bump premajor          a prerelease of the next major"
+						"box release bump preminor beta     start the next minor version as beta",
+						"box release bump preminor alpha    start the next minor version as alpha",
+						"box release bump prepatch          start the next patch version",
+						"box release bump premajor          start the next major version"
 					],
-					"To start a prerelease"
+					"Start a prerelease"
 				);
 			}
 			return stop( exception.message );
@@ -94,11 +93,11 @@ component extends="build-template.models.BaseKitService" {
 		if ( arguments.dryRun ) {
 			print
 				.line()
-				.boldYellowLine( "Dry run: nothing was written." )
+				.boldYellowLine( "Practice run: no files were changed." )
 				.line( "Version:   #currentVersion# -> #newVersion#" )
-				.line( "Changelog: notes would move into #### [#newVersion#] - #releaseDate#" )
+				.line( "Changelog: the notes would move to #### [#newVersion#] - #releaseDate#" )
 				.line()
-				.boldLine( "The new changelog would start like this:" )
+				.boldLine( "The updated changelog would begin with:" )
 				.line( left( newChangelog, 600 ) )
 				.toConsole();
 			return;
@@ -112,11 +111,11 @@ component extends="build-template.models.BaseKitService" {
 		}
 
 		fileWrite( variables.config.repoPath( variables.settings.changelog ), newChangelog );
-		print.greenLine( "#variables.settings.changelog#: notes moved into #### [#newVersion#] - #releaseDate#" ).toConsole();
+		print.greenLine( "#variables.settings.changelog#: moved the notes to #### [#newVersion#] - #releaseDate#" ).toConsole();
 
 		print
 			.line()
-			.boldMagentaLine( "Now at #newVersion#. Next steps:" )
+			.boldMagentaLine( "Version #newVersion# is ready. Next steps:" )
 			.line( "  1. Review:        git diff -- box.json ""#variables.settings.changelog#""" )
 			.line( "  2. Stage:         git add box.json ""#variables.settings.changelog#""" )
 			.line( "  3. Check staged:  git diff --staged" )
@@ -129,20 +128,18 @@ component extends="build-template.models.BaseKitService" {
 	// PRIVATE HELPERS
 
 	/**
-	 * Writes the new version into box.json, replacing only that one value so the rest of the
-	 * file keeps its formatting.
+	 * Changes only the version value in box.json. All other formatting stays unchanged.
 	 */
 	private function setBoxVersion( required string version ){
 		var boxPath     = variables.config.repoPath( "box.json" );
 		var packageText = fileRead( boxPath );
 
-		// Find the first "version":"..." and replace what sits between the quotes. This splices
-		// the text rather than using a replacement pattern: a pattern like "\1" placed directly
-		// before a version starting with a digit reads as a different group number and eats
-		// characters.
+		// Find the first "version":"..." value and replace only the text inside its quotes.
+		// Do not use a regular expression replacement such as "\1" here. A version that starts
+		// with a digit could make the replacement look like a different capture group number.
 		var versionMatch = reFind( '("version"\s*:\s*")([^"]*)(")', packageText, 1, true );
 		if ( !arrayLen( versionMatch.pos ) || versionMatch.pos[ 1 ] == 0 ) {
-			return stop( "Could not find a ""version"" entry in box.json." );
+			return stop( "box.json does not contain a ""version"" entry." );
 		}
 		var valueStart  = versionMatch.pos[ 3 ];
 		var valueLength = versionMatch.len[ 3 ];
@@ -155,15 +152,15 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Reads the changelog and asks ChangelogService to build the updated text.
+	 * Reads the changelog and returns the updated text from ChangelogService.
 	 */
 	private string function buildChangelog( required string version, required string date ){
 		var changelogPath = variables.config.repoPath( variables.settings.changelog );
 		if ( !fileExists( changelogPath ) ) {
 			throw(
 				type    = "BuildChangelog.MissingFile",
-				message = "No #variables.settings.changelog# found in the project root. "
-					& "Create one with an ""#### [Unreleased]"" section, or run: box release init"
+				message = "The project root does not contain #variables.settings.changelog#. "
+					& "Create it with a ""#### [Unreleased]"" section, or run: box release init"
 			);
 		}
 

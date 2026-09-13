@@ -1,8 +1,8 @@
-/** Runs the real release commands inside disposable projects and local Git repositories. */
+/** Runs real release commands in temporary projects with local Git repositories. */
 component extends="tests.support.KitSpec" {
 
 	function run(){
-		describe( "Release commands", function(){
+		describe( "Release command integration", function(){
 			beforeEach( function(){
 				fixtureProcess = new tests.support.FixtureProcess( repoRoot() );
 				fixtureRoot    = fixtureProcess.createProject();
@@ -14,7 +14,7 @@ component extends="tests.support.KitSpec" {
 				deleteDirectory( originRoot );
 			} );
 
-			it( "sets a project up with detected settings and leaves box.json scripts alone", function(){
+			it( "creates project settings without changing box.json scripts", function(){
 				writeJSON(
 					fixtureRoot & "/box.json",
 					{
@@ -54,14 +54,14 @@ component extends="tests.support.KitSpec" {
 				expect( forcedSettings ).notToHaveKey( "custom" );
 			} );
 
-			it( "previews a bump without writing and then applies the same bump", function(){
+			it( "shows a version change before applying the same change", function(){
 				writeBasicProject( "1.2.3" );
 				writeChangelog( true );
 				var packageBefore   = fileRead( fixtureRoot & "/box.json" );
 				var changelogBefore = fileRead( fixtureRoot & "/CHANGELOG.md" );
 
 				var dryRun = fixtureProcess.runKit( fixtureRoot, "release bump patch --dryRun" );
-				expectCommand( dryRun, "the bump dry run" );
+				expectCommand( dryRun, "the version practice run" );
 				expect( fileRead( fixtureRoot & "/box.json" ) ).toBe( packageBefore );
 				expect( fileRead( fixtureRoot & "/CHANGELOG.md" ) ).toBe( changelogBefore );
 
@@ -71,7 +71,7 @@ component extends="tests.support.KitSpec" {
 				expect( fileRead( fixtureRoot & "/CHANGELOG.md" ) ).toInclude( versionHeading( "1.2.4" ) );
 			} );
 
-			it( "guards beta and alpha bumps from retargeting an active prerelease", function(){
+			it( "stops beta and alpha changes from changing an active prerelease target", function(){
 				for ( var preid in [ "beta", "alpha" ] ) {
 					writeBasicProject( "1.2.0-#preid#.3" );
 					writeChangelog( true );
@@ -84,7 +84,7 @@ component extends="tests.support.KitSpec" {
 				}
 			} );
 
-			it( "permits an explicit prerelease retarget", function(){
+			it( "changes a prerelease target when the flag allows it", function(){
 				writeBasicProject( "1.2.0-rc.2" );
 				writeChangelog( true );
 
@@ -93,11 +93,11 @@ component extends="tests.support.KitSpec" {
 				expect( guardedBump.output ).toInclude( "allowPrereleaseRetarget" );
 
 				var allowedBump = fixtureProcess.runKit( fixtureRoot, "release bump preminor beta --allowPrereleaseRetarget" );
-				expectCommand( allowedBump, "the explicit prerelease retarget" );
+				expectCommand( allowedBump, "the allowed prerelease target change" );
 				expect( deserializeJSON( fileRead( fixtureRoot & "/box.json" ) ).version ).toBe( "1.3.0-beta.1" );
 			} );
 
-			it( "starts a prerelease from a stable version", function(){
+			it( "starts a prerelease from a final version", function(){
 				writeBasicProject( "1.0.0" );
 				writeChangelog( true );
 				var bump = fixtureProcess.runKit( fixtureRoot, "release bump preminor alpha" );
@@ -105,7 +105,7 @@ component extends="tests.support.KitSpec" {
 				expect( deserializeJSON( fileRead( fixtureRoot & "/box.json" ) ).version ).toBe( "1.1.0-alpha.1" );
 			} );
 
-			it( "builds a checked ZIP with tokens and exclusions", function(){
+			it( "builds and checks a zip with replaced values and excluded files", function(){
 				writeBasicProject( "1.0.0" );
 				fileWrite( fixtureRoot & "/version.txt", "@build.version@+@build.number@" );
 				directoryCreate( fixtureRoot & "/tests", true, true );
@@ -131,20 +131,20 @@ component extends="tests.support.KitSpec" {
 				expect( zipNames ).notToInclude( "build.json" );
 			} );
 
-			it( "rehearses a release without creating or pushing a tag", function(){
+			it( "runs a release practice run without creating or pushing a tag", function(){
 				writeBasicProject( "1.0.0", true );
 				writeChangelog( false, "1.0.0" );
 				fileWrite( fixtureRoot & "/source.txt", "release fixture" );
 				createLocalGitRemote();
 
 				var releaseResult = fixtureProcess.runKit( fixtureRoot, "release run version=1.0.0 --dryRun --skipTests" );
-				expectCommand( releaseResult, "the release dry run" );
-				expect( releaseResult.output ).toInclude( "nothing will be published, tagged, or pushed" );
+				expectCommand( releaseResult, "the release practice run" );
+				expect( releaseResult.output ).toInclude( "Nothing will be published, tagged, or pushed" );
 				expect( fixtureProcess.runGit( fixtureRoot, [ "tag", "--list" ] ).output ).toBe( "" );
 				expect( fixtureProcess.runGit( originRoot, [ "tag", "--list" ] ).output ).toBe( "" );
 			} );
 
-			it( "finds the project from a subfolder", function(){
+			it( "finds the project when a command runs from a child folder", function(){
 				writeBasicProject( "1.0.0" );
 				directoryCreate( fixtureRoot & "/models", true, true );
 				var checkResult = fixtureProcess.runKit( fixtureRoot & "/models", "release check" );
@@ -152,27 +152,27 @@ component extends="tests.support.KitSpec" {
 				expect( checkResult.output ).toInclude( "sample 1.0.0" );
 			} );
 
-			it( "rehearses an existing-tag release whose tag is only local", function(){
+			it( "practices an existing-tag release with a local-only tag", function(){
 				writeTaggedReleaseProject();
 
 				var releaseResult = runExistingTagDryRun();
-				expectCommand( releaseResult, "the existing-tag dry run" );
+				expectCommand( releaseResult, "the existing-tag practice run" );
 				expect( releaseResult.output ).toInclude( "local only" );
 				expect( releaseResult.output ).toInclude( "git push origin v1.0.0" );
 				expect( fixtureProcess.runGit( originRoot, [ "tag", "--list" ] ).output ).toBe( "" );
 			} );
 
-			it( "reports an existing tag that origin already has", function(){
+			it( "reports when origin already has the existing tag", function(){
 				writeTaggedReleaseProject();
 				expectGit( fixtureProcess.runGit( fixtureRoot, [ "push", "origin", "v1.0.0" ] ) );
 
 				var releaseResult = runExistingTagDryRun();
-				expectCommand( releaseResult, "the existing-tag dry run" );
+				expectCommand( releaseResult, "the existing-tag practice run" );
 				expect( releaseResult.output ).toInclude( "is on origin" );
 				expect( releaseResult.output ).notToInclude( "git push origin v1.0.0" );
 			} );
 
-			it( "refuses an existing tag that origin holds at a different commit", function(){
+			it( "stops when the existing tag points to another commit on origin", function(){
 				writeTaggedReleaseProject();
 				expectGit( fixtureProcess.runGit( fixtureRoot, [ "push", "origin", "v1.0.0" ] ) );
 				fileWrite( fixtureRoot & "/later.txt", "a later commit" );
@@ -185,12 +185,12 @@ component extends="tests.support.KitSpec" {
 				expect( releaseResult.output ).toInclude( "different commit" );
 			} );
 
-			// The github command really pushes the tag here, to the local bare origin. The GitHub
-			// Release step after it cannot succeed: gh is either not installed or finds no GitHub
-			// host among the remotes, so the run stops there and nothing leaves this machine.
-			it( "pushes a local-only tag before creating the GitHub Release", function(){
+			// This command pushes the tag to the local bare origin. The next GitHub Release step
+			// fails because gh is missing or no remote uses GitHub. The command stops there and
+			// does not send data outside this computer.
+			it( "pushes a local-only tag before it tries to create the GitHub Release", function(){
 				writeTaggedReleaseProject();
-				expectCommand( runExistingTagDryRun(), "the dry run that builds the zip" );
+				expectCommand( runExistingTagDryRun(), "the practice run that builds the zip" );
 
 				var githubResult = fixtureProcess.runKit( fixtureRoot, "release github version=1.0.0 --existingTag" );
 				expect( githubResult.exitCode ).notToBe( 0 );
@@ -278,7 +278,7 @@ component extends="tests.support.KitSpec" {
 		if ( arguments.result.exitCode != 0 ) {
 			throw(
 				type    = "BuildKit.IntegrationCommand",
-				message = "#arguments.label# returned exit code #arguments.result.exitCode#.",
+				message = "#arguments.label# failed with exit code #arguments.result.exitCode#.",
 				detail  = arguments.result.output
 			);
 		}

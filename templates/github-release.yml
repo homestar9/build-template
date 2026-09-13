@@ -1,22 +1,21 @@
 ##
-## This optional workflow releases the project from GitHub Actions.
+## This optional GitHub Actions workflow releases the project.
 ##
 ## To use it, copy this file to .github/workflows/release.yml in your project.
-## It is kept here so it does not run inside the build kit repository itself.
+## This copy stays in the build kit repository so GitHub does not run it here.
 ##
-## It runs after you push a version tag such as v1.2.3. You can also start it by hand from the
-## Actions tab. A tag run publishes the existing tag. A manual branch run lets the release
-## command create the tag. Both paths build, test, and publish the package.
+## The workflow starts when you push a version tag such as v1.2.3. You can also start it from
+## the Actions tab. A tag run publishes the tag that started the workflow. A manual branch
+## run allows the release command to create the tag. Both methods build, test, and publish.
 ##
-## The build-template module is installed into the runner's CommandBox first, so the same
-## commands you use locally run here.
+## The workflow installs build-template in the runner's CommandBox. It then runs the same
+## release commands that you run on your computer.
 ##
-## Two secrets are needed in your repository settings:
-##   FORGEBOX_API_TOKEN   from https://forgebox.io  (only if you publish to ForgeBox)
-## GITHUB_TOKEN is provided automatically.
+## Add FORGEBOX_API_TOKEN to your repository secrets when you publish to ForgeBox.
+## Get the token from https://forgebox.io. GitHub provides GITHUB_TOKEN automatically.
 ##
-## This workflow passes the Actions run number as the build identifier. For example, run 7
-## stamps the package as 1.2.3+7. Remove the :buildID line to use the commit hash instead.
+## The workflow uses the Actions run number as the build ID. For example, run 7 marks the
+## package as 1.2.3+7. Remove the buildID line to use the Git commit hash instead.
 ##
 
 name: Release
@@ -35,10 +34,10 @@ jobs:
       contents: write
 
     steps:
-      - name: Check out the code
+      - name: Check out the source code
         uses: actions/checkout@v4
         with:
-          # Tags are needed so the release checks can see what is already released.
+          # Download all tags so the release check can find versions that already exist.
           fetch-depth: 0
 
       - name: Set up Java
@@ -58,7 +57,7 @@ jobs:
       - name: Start the test server
         run: |
           box server start serverConfigFile=server-lucee@5.json --!console
-          # Wait for the app to answer before running the suite.
+          # Wait until the app answers before running the tests.
           for i in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:60299/ || true)
             if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then echo "server is up"; break; fi

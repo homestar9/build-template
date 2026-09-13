@@ -1,16 +1,18 @@
 /**
- * What every `release` command has in common: find the project, load its settings, hand the
- * work to a component in models/, and turn that component's stop into a command error.
+ * Provides the shared setup and error handling for each `release` command.
  *
- * Commands are singletons that CommandBox keeps between runs, so nothing is stored in
- * variables apart from the injected locator. Each run loads a fresh ProjectConfig.
+ * It finds the project, loads its settings, and starts the requested model component. It also
+ * converts expected model exceptions into command errors.
+ *
+ * CommandBox keeps command components between runs. The component stores only the injected
+ * project locator. Each command run creates a new ProjectConfig.
  */
 component {
 
 	property name="locator" inject="ProjectLocator@build-template";
 
 	/**
-	 * The root of the project the shell is in, found from the current folder.
+	 * Finds the project root from the current folder.
 	 */
 	string function projectRoot(){
 		return runKit( function(){
@@ -19,8 +21,7 @@ component {
 	}
 
 	/**
-	 * Loads the project the shell is in and says which one it is, so a command run from the
-	 * wrong folder is obvious straight away.
+	 * Loads the current project and prints its name, version, and root folder.
 	 */
 	any function loadProject(){
 		return runKit( function(){
@@ -28,7 +29,7 @@ component {
 			print.line( "Project: #config.slug()# #config.version()# at #config.getRoot()#" ).toConsole();
 			if ( config.isLegacyLayout() ) {
 				print
-					.yellowLine( "Settings were read from build/build.json, the 1.x layout. Move to 2.0 with: box release migrate" )
+					.yellowLine( "Using the old 1.x settings at build/build.json. Move them to 2.0 with: box release migrate" )
 					.toConsole();
 			}
 			return config;
@@ -36,10 +37,10 @@ component {
 	}
 
 	/**
-	 * Creates a workflow component that prints through this command.
+	 * Creates a model component that uses this command's print buffer.
 	 *
-	 * @name   The component, for example "ReleaseService".
-	 * @config The loaded project, when the workflow needs one.
+	 * @name   The component name, such as "ReleaseService".
+	 * @config The loaded project when the component needs project settings.
 	 */
 	any function kit( required string name, any config ){
 		var service = getInstance( arguments.name & "@build-template" ).usePrinter( print );
@@ -50,10 +51,10 @@ component {
 	}
 
 	/**
-	 * Runs the work and reports a kit stop as a plain command error, without a stack trace.
-	 * Anything unexpected is rethrown so the real trace is not hidden.
+	 * Runs a function and reports an expected kit exception without a stack trace.
+	 * It throws unexpected exceptions again so CommandBox can show the full stack trace.
 	 *
-	 * @work A closure doing the work.
+	 * @work The function to run.
 	 */
 	any function runKit( required any work ){
 		try {
@@ -67,8 +68,8 @@ component {
 	}
 
 	/**
-	 * Whether an exception is one of ours or a failed nested command, both of which already
-	 * carry a message written for people.
+	 * Returns true for an expected kit error or a failed nested command. These errors already
+	 * contain a message that explains the problem.
 	 */
 	private boolean function isKitStop( required any exception ){
 		var type = arguments.exception.type ?: "";

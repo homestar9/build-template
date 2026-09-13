@@ -1,5 +1,5 @@
 /**
- * Prints the release notes a version would get, taken from its changelog section.
+ * Prints the release notes from a version's changelog section.
  * .
  * {code:bash}
  * release notes
@@ -9,7 +9,7 @@
 component extends="build-template.models.BaseKitCommand" {
 
 	/**
-	 * @version The version whose notes to show. Defaults to the box.json version.
+	 * @version The version to show. The default is the version in box.json.
 	 */
 	function run( string version = "" ){
 		var config    = loadProject();

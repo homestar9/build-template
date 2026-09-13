@@ -1,9 +1,8 @@
 /**
- * Runs the project's test suite on every CFML engine listed in build.json, one at a time.
+ * Runs the project tests on each CFML engine listed in build.json.
  * .
- * Each engine is started from its server json file, warmed up, tested, and stopped. Every
- * engine gets its turn even when an earlier one fails, and the command ends with an error
- * when any of them failed.
+ * The command starts, prepares, tests, and stops one engine at a time. A failed engine does
+ * not stop the remaining engines. The command returns an error when any engine fails.
  * .
  * {code:bash}
  * release engines

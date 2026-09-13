@@ -1,13 +1,13 @@
 /**
- * CommandBox module configuration for the build kit.
+ * Configures the build-template CommandBox module.
  *
- * Installing this module gives CommandBox the `release` namespace: `box release run`,
- * `box release check`, `box release bump`, and the rest. Commands live in commands/release,
- * the work is done by the components in models/, and templates/ holds the files that
- * `release init` can copy into a project.
+ * This module adds commands under the `release` command group, also called a namespace.
+ * Examples include `box release run`, `box release check`, and `box release bump`. The command entry points
+ * are in commands/release. Components in models/ perform the work. The templates/ folder
+ * contains files that `release init` can copy into a project.
  *
- * The mapping and model namespace are pinned to the package slug so they stay the same
- * whether the module was installed from ForgeBox or loaded from a checkout by the tests.
+ * The mapping and model namespace always use the package slug. The names stay the same when
+ * the module comes from ForgeBox or when the tests load this working copy.
  */
 component {
 

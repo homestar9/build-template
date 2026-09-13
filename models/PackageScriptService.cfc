@@ -1,14 +1,14 @@
 /**
- * Knows the box.json scripts the 1.x kit wrote into projects, and what each one becomes in
- * 2.0. The migrate command uses this to rewrite a project's scripts.
+ * Stores the box.json scripts created by the 1.x kit and their 2.0 replacements. The migrate
+ * command uses these lists to update project scripts.
  *
- * This component works with structs only. ProjectMigrator reads and writes box.json.
+ * This component only works with structs. ProjectMigrator reads and writes box.json.
  */
 component singleton {
 
 	/**
-	 * The scripts the 1.x installer wrote, exactly as it wrote them. A project whose script
-	 * still holds one of these values has not customised it.
+	 * Returns the exact scripts written by the 1.x installer. A matching value means that the
+	 * project did not change the script.
 	 */
 	struct function legacyScripts(){
 		return {
@@ -31,8 +31,8 @@ component singleton {
 	}
 
 	/**
-	 * The 2.0 command each 1.x script becomes. An empty value means the script has no
-	 * replacement and is removed; updating the kit is now `box update build-template --system`.
+	 * Returns the 2.0 replacement for each 1.x script. An empty value removes the script because
+	 * it has no replacement. The kit update command is now `box update build-template --system`.
 	 */
 	struct function modernScripts(){
 		return {
@@ -55,15 +55,15 @@ component singleton {
 	}
 
 	/**
-	 * Rewrites the 1.x scripts in a copy of the package data. A script whose value is exactly
-	 * what 1.x wrote becomes its 2.0 command; one that already holds the 2.0 command is left
-	 * as it is; anything else was customised by the project and is kept untouched.
+	 * Updates 1.x scripts in a copy of the package data. An unchanged 1.x script gets its 2.0
+	 * command. A script that already uses the 2.0 command stays unchanged. Any other value is a
+	 * project change, so the function keeps it.
+ *
+	 * The result contains the new package data and sorted lists of updated, removed, and kept
+	 * script names.
 	 *
-	 * Returns the new package data plus the sorted script names that were rewritten, removed,
-	 * and kept.
-	 *
-	 * @packageData The parsed box.json.
-	 * @remove      Delete the 1.x scripts instead of rewriting them.
+	 * @packageData The parsed box.json data.
+	 * @remove      Deletes 1.x scripts instead of updating them.
 	 */
 	struct function migrateScripts( required struct packageData, boolean remove = false ){
 		var result    = duplicate( arguments.packageData );
@@ -87,7 +87,7 @@ component singleton {
 				continue;
 			}
 			if ( compare( current, modern[ scriptName ] ) == 0 ) {
-				// Already migrated.
+				// The script already uses the current command.
 				continue;
 			}
 			if ( compare( current, legacy[ scriptName ] ) != 0 ) {

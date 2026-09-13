@@ -1,4 +1,4 @@
-/** Runs the real migrate command against a project shaped the way the 1.x installer left it. */
+/** Runs the migration command on a project that uses the 1.x layout. */
 component extends="tests.support.KitSpec" {
 
 	function run(){
@@ -13,9 +13,9 @@ component extends="tests.support.KitSpec" {
 				deleteDirectory( fixtureRoot );
 			} );
 
-			it( "lists the changes in a dry run without making them", function(){
+			it( "lists migration changes without applying them", function(){
 				var dryRun = fixtureProcess.runKit( fixtureRoot, "release migrate --dryRun" );
-				expectCommand( dryRun, "the migrate dry run" );
+				expectCommand( dryRun, "the migration practice run" );
 				expect( dryRun.output ).toInclude( "build/build.json -> build.json" );
 				expect( dryRun.output ).toInclude( "build/Release.cfc" );
 				expect( dryRun.output ).toInclude( "scripts.release" );
@@ -23,7 +23,7 @@ component extends="tests.support.KitSpec" {
 				expect( fileExists( fixtureRoot & "/build/Release.cfc" ) ).toBeTrue();
 			} );
 
-			it( "moves the settings, removes the kit files, and rewrites the scripts", function(){
+			it( "moves settings, removes old kit files, and updates scripts", function(){
 				var migrate = fixtureProcess.runKit( fixtureRoot, "release migrate" );
 				expectCommand( migrate, "release migrate" );
 
@@ -59,7 +59,7 @@ component extends="tests.support.KitSpec" {
 		if ( arguments.result.exitCode != 0 ) {
 			throw(
 				type    = "BuildKit.IntegrationCommand",
-				message = "#arguments.label# returned exit code #arguments.result.exitCode#.",
+				message = "#arguments.label# failed with exit code #arguments.result.exitCode#.",
 				detail  = arguments.result.output
 			);
 		}

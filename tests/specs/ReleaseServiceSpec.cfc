@@ -1,8 +1,8 @@
-/** Checks how the release reads git's answer about a tag on origin, without touching a remote. */
+/** Checks how release code reads remote tag results without using a real remote. */
 component extends="tests.support.KitSpec" {
 
 	function run(){
-		describe( "Release remote tag state", function(){
+		describe( "Remote release tag status", function(){
 			beforeEach( function(){
 				release = prepareMock( kit( "ReleaseService" ) );
 				config  = createStub();
@@ -10,14 +10,14 @@ component extends="tests.support.KitSpec" {
 				makePublic( release, "remoteTagState" );
 			} );
 
-			it( "reads the commit of a lightweight tag", function(){
+			it( "reads a lightweight tag commit", function(){
 				config.$( "execNative", { exitCode : 0, output : "abc123" & chr( 9 ) & "refs/tags/v1.0.0" } );
 				var state = release.remoteTagState( "v1.0.0" );
 				expect( state.status ).toBe( "present" );
 				expect( state.commit ).toBe( "abc123" );
 			} );
 
-			it( "prefers the peeled commit of an annotated tag", function(){
+			it( "uses the resolved commit for an annotated tag", function(){
 				config.$(
 					"execNative",
 					{
@@ -29,14 +29,14 @@ component extends="tests.support.KitSpec" {
 				expect( release.remoteTagState( "v1.0.0" ).commit ).toBe( "commit42" );
 			} );
 
-			it( "reports a tag origin does not have", function(){
+			it( "reports a tag that is missing from origin", function(){
 				config.$( "execNative", { exitCode : 2, output : "" } );
 				var state = release.remoteTagState( "v1.0.0" );
 				expect( state.status ).toBe( "missing" );
 				expect( state.commit ).toBe( "" );
 			} );
 
-			it( "reports when origin could not be asked", function(){
+			it( "reports when origin cannot be checked", function(){
 				config.$( "execNative", { exitCode : 128, output : "fatal: could not read from remote" } );
 				var state = release.remoteTagState( "v1.0.0" );
 				expect( state.status ).toBe( "unknown" );

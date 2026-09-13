@@ -1,4 +1,4 @@
-/** Tests how a command finds the project it should work on. */
+/** Checks how a command finds its project root and settings file. */
 component extends="tests.support.KitSpec" {
 
 	function run(){
@@ -12,7 +12,7 @@ component extends="tests.support.KitSpec" {
 				deleteDirectory( fixtureRoot );
 			} );
 
-			it( "finds the nearest folder with a box.json, from a subfolder too", function(){
+			it( "finds the nearest box.json from a child folder", function(){
 				fileWrite( fixtureRoot & "/box.json", "{}" );
 				directoryCreate( fixtureRoot & "/models/deep", true, true );
 
@@ -21,7 +21,7 @@ component extends="tests.support.KitSpec" {
 				expect( locator.findRoot( replace( fixtureRoot, "/", "\", "all" ) & "\" ) ).toBe( fixtureRoot );
 			} );
 
-			it( "stops at a repository root that has no box.json", function(){
+			it( "stops at a Git root without box.json", function(){
 				directoryCreate( fixtureRoot & "/.git", true, true );
 				directoryCreate( fixtureRoot & "/src", true, true );
 				expect( function(){
@@ -29,7 +29,7 @@ component extends="tests.support.KitSpec" {
 				} ).toThrow( type = "BuildKit.NoProject" );
 			} );
 
-			it( "reports where the settings live", function(){
+			it( "returns the current or old settings path", function(){
 				expect( locator.configFile( fixtureRoot ).path ).toBe( "" );
 
 				directoryCreate( fixtureRoot & "/build", true, true );

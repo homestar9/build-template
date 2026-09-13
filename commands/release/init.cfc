@@ -1,9 +1,9 @@
 /**
- * Sets the project in this folder up for the build kit.
+ * Sets up the current project for build-template.
  * .
- * Writes build.json with settings detected from box.json, Git, and the server json files in
- * the project root, and creates CHANGELOG.md when the project has none. Existing files are
- * kept unless --force is given.
+ * Creates build.json from settings found in box.json, Git, and server JSON files in the
+ * project root. It creates CHANGELOG.md when the project does not have one. It keeps existing
+ * files unless you use --force.
  * .
  * {code:bash}
  * release init
@@ -14,9 +14,9 @@
 component extends="build-template.models.BaseKitCommand" {
 
 	/**
-	 * @force Overwrite files that already exist.
-	 * @docs  Copy the RELEASE.md guide into the project root.
-	 * @ci    Copy the GitHub Actions release workflow to .github/workflows/release.yml.
+	 * @force Replaces files that already exist.
+	 * @docs  Copies the RELEASE.md guide to the project root.
+	 * @ci    Copies the GitHub Actions workflow to .github/workflows/release.yml.
 	 */
 	function run( boolean force = false, boolean docs = false, boolean ci = false ){
 		var root = projectRoot();

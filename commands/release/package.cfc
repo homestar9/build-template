@@ -1,8 +1,9 @@
 /**
- * Builds and checks the package zip without publishing it.
+ * Builds and checks the package zip file without publishing it.
  * .
- * Runs the tests, copies the allowed source into a staging folder, stamps the version
- * tokens, zips it under .artifacts/<slug>/<version>/, verifies the zip, and writes checksums.
+ * It runs the tests and copies allowed source files into a temporary staging folder. It adds
+ * the version values, creates the zip under .artifacts/<slug>/<version>/, checks the zip, and
+ * writes checksum files.
  * .
  * {code:bash}
  * release package
@@ -13,11 +14,11 @@
 component extends="build-template.models.BaseKitCommand" {
 
 	/**
-	 * @projectName The name used for the package folder and zip. Defaults to the box.json slug.
-	 * @version     The version being built. Defaults to the box.json version.
-	 * @buildID     The build identifier. Defaults to the short git commit hash.
-	 * @branch      The branch being built. Defaults to the checked-out branch.
-	 * @skipTests   Skip the test suite for this build. It prints a warning.
+	 * @projectName The package folder and zip filename. The default is the box.json slug.
+	 * @version     The version to build. The default is the version in box.json.
+	 * @buildID     The build ID. The default is the short Git commit hash.
+	 * @branch      The branch to build. The default is the current branch.
+	 * @skipTests   Skips the tests and prints a warning.
 	 */
 	function run(
 		string projectName = "",

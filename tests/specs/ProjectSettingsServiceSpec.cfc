@@ -1,4 +1,4 @@
-/** Tests project defaults and display values without reading the filesystem. */
+/** Checks project defaults and display values without reading files. */
 component extends="tests.support.KitSpec" {
 
 	function run(){
@@ -7,13 +7,13 @@ component extends="tests.support.KitSpec" {
 				projectSettings = kit( "ProjectSettingsService" );
 			} );
 
-			it( "detects modules and applications from the package type", function(){
+			it( "gets the project type from the package type", function(){
 				expect( projectSettings.detectProjectType( { type : "commandbox-modules" } ) ).toBe( "module" );
 				expect( projectSettings.detectProjectType( { type : "mvc" } ) ).toBe( "app" );
 				expect( projectSettings.detectProjectType( {} ) ).toBe( "app" );
 			} );
 
-			it( "reads string, array, and named test runners", function(){
+			it( "reads test runner settings in each supported format", function(){
 				expect( projectSettings.detectTestRunner( { testbox : { runner : "http://one/tests" } } ) )
 					.toBe( "http://one/tests" );
 				expect( projectSettings.detectTestRunner( { testbox : { runner : [ "http://two/tests" ] } } ) )
@@ -24,7 +24,7 @@ component extends="tests.support.KitSpec" {
 					.toBe( "http://127.0.0.1:60299/tests/runner.cfm" );
 			} );
 
-			it( "keeps module and application exclusion policies separate", function(){
+			it( "uses different exclusion rules for modules and applications", function(){
 				var moduleExcludes = projectSettings.installerDefaultExcludes( "module" );
 				var appExcludes    = projectSettings.installerDefaultExcludes( "app" );
 
@@ -33,7 +33,7 @@ component extends="tests.support.KitSpec" {
 				expect( arrayToList( appExcludes ) ).toInclude( "well-known" );
 			} );
 
-			it( "names engines from cfengine, server name, or filename", function(){
+			it( "gets engine names from cfengine, server name, or filename", function(){
 				expect( projectSettings.engineName( "server-lucee.json", { app : { cfengine : "lucee@5" } } ) )
 					.toBe( "Lucee 5" );
 				expect( projectSettings.engineName( "server-local.json", { name : "Local Adobe" } ) )

@@ -1,9 +1,9 @@
 /**
- * Finishes a release that stopped after publishing: tags, pushes, and creates the GitHub
- * Release from the zip already built under .artifacts.
+ * Finishes a release that stopped after publishing. It creates and pushes the tag. It then
+ * creates a GitHub Release from the zip file under .artifacts.
  * .
- * Use --existingTag when the failure message said the tag was already pushed, or when another
- * tool created the tag.
+ * Use --existingTag when another tool created the tag or when the failure message says that
+ * the tag was already pushed.
  * .
  * {code:bash}
  * release github
@@ -14,9 +14,10 @@
 component extends="build-template.models.BaseKitCommand" {
 
 	/**
-	 * @version     The version being released. Defaults to the box.json version.
-	 * @dryRun      Print what would run without doing it.
-	 * @existingTag The tag already exists at HEAD. It is pushed only if origin lacks it.
+	 * @version     The release version. The default is the version in box.json.
+	 * @dryRun      Shows the commands without running them.
+	 * @existingTag Uses a tag that already exists at HEAD. The command pushes the tag when it is
+	 *              missing from origin.
 	 */
 	function run( string version = "", boolean dryRun = false, boolean existingTag = false ){
 		var config = loadProject();

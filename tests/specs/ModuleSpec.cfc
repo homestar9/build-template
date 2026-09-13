@@ -1,9 +1,9 @@
-/** Checks the module is declared and registered the way the docs and installer expect. */
+/** Checks the module name, package exclusions, and registered commands. */
 component extends="tests.support.KitSpec" {
 
 	function run(){
 		describe( "Module", function(){
-			it( "is a CommandBox module named after its package slug", function(){
+			it( "uses its package slug as the CommandBox module name", function(){
 				var packageData  = deserializeJSON( fileRead( repoRoot() & "/box.json" ) );
 				var moduleConfig = createObject( "component", "build-template.ModuleConfig" );
 
@@ -13,14 +13,14 @@ component extends="tests.support.KitSpec" {
 				expect( moduleConfig.modelNamespace ).toBe( packageData.slug );
 			} );
 
-			it( "keeps the tests and fixtures out of the package", function(){
+			it( "excludes tests and temporary files from the package", function(){
 				var ignore = arrayToList( deserializeJSON( fileRead( repoRoot() & "/box.json" ) ).ignore );
 				expect( ignore ).toInclude( "/tests/" );
 				expect( ignore ).toInclude( "/testbox/" );
 				expect( ignore ).toInclude( "/.test-work/" );
 			} );
 
-			it( "registers every release command", function(){
+			it( "registers all release commands", function(){
 				var hierarchy = application.wirebox.getInstance( "CommandService" ).getCommandHierarchy();
 				expect( hierarchy ).toHaveKey( "release" );
 

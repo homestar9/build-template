@@ -1,9 +1,10 @@
 /**
- * Checks, builds, and publishes the current version of the project in this folder.
+ * Checks, builds, and publishes the current project version.
  * .
- * The release checks the repository first, fast-forwards the production branch, runs the
- * tests and builds a verified zip, publishes to ForgeBox when enabled, then creates the Git
- * tag and GitHub Release when enabled. Nothing permanent happens until every check passes.
+ * It checks the repository before making changes. It updates the production branch with a
+ * fast-forward, runs the tests, and builds a checked zip file. It publishes to ForgeBox when
+ * enabled. It then creates the Git tag and GitHub Release when enabled. It does not publish,
+ * tag, or push anything until every check passes.
  * .
  * {code:bash}
  * release run
@@ -15,12 +16,12 @@
 component extends="build-template.models.BaseKitCommand" {
 
 	/**
-	 * @version     The version to release. Defaults to the box.json version.
-	 * @dryRun      Do everything except publish, tag, and push. Prints what it would have run.
-	 * @skipTests   Skip the test suite. Use only when the current version has already been tested.
-	 * @existingTag Publish a tag that already exists at HEAD, such as one made by a Gitflow finish.
-	 *              The tag is pushed first if origin does not have it yet.
-	 * @buildID     Optional build identifier stamped into the package. CI uses its run number.
+	 * @version     The version to release. The default is the version in box.json.
+	 * @dryRun      Performs all safe steps. It prints but does not run publish, tag, or push steps.
+	 * @skipTests   Skips the tests. Use only when the current version was already tested.
+	 * @existingTag Publishes a tag that already exists at HEAD, such as a tag from Gitflow. The
+	 *              command pushes the tag when origin does not have it.
+	 * @buildID     An optional build ID added to the package. CI uses its run number.
 	 */
 	function run(
 		string version      = "",

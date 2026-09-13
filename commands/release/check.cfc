@@ -1,8 +1,8 @@
 /**
- * Reports whether the project in this folder is ready for a release.
+ * Reports whether the current project is ready for a release.
  * .
- * It checks the installed kit, the settings, the Git repository, the changelog, the required
- * tools, and the test server, and lists every problem it finds. It changes nothing.
+ * It checks the installed kit, project settings, Git repository, changelog, required tools,
+ * and test server. It lists every problem that it finds. It does not change anything.
  * .
  * {code:bash}
  * release check

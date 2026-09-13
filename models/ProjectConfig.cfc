@@ -1,12 +1,12 @@
 /**
- * Loads and validates one project's build settings.
+ * Loads and checks one project's build settings.
  *
- * A command finds the project root, then calls load( root ). This reads the project's
- * build.json (or build/build.json from the 1.x layout), lays it over the defaults, works out
- * anything derivable from box.json, and checks the result makes sense. It also offers the
- * project paths and the git/gh runner every workflow uses.
+ * A command finds the project root and calls load( root ). This component reads build.json or
+ * the old 1.x file at build/build.json. It applies project values over the defaults. It fills
+ * settings that can be found in box.json and checks each final value. It also provides project
+ * paths and access to git and gh commands.
  *
- * Projects configure this through build.json. A project should never need to edit the kit.
+ * Projects change release behavior through build.json. They do not need to edit the kit.
  */
 component {
 
@@ -25,9 +25,9 @@ component {
 	}
 
 	/**
-	 * Reads the settings for one project.
+	 * Reads and checks the settings for one project.
 	 *
-	 * @root The project root, the folder that holds box.json.
+	 * @root The project root folder that contains box.json.
 	 */
 	function load( required string root ){
 		variables.root = reReplace( replace( arguments.root, "\", "/", "all" ), "/+$", "" );
@@ -40,46 +40,46 @@ component {
 		return this;
 	}
 
-	/** Returns the whole settings struct. */
+	/** Returns all project settings. */
 	struct function getSettings(){
 		return variables.settings;
 	}
 
 	/**
-	 * Returns one setting.
+	 * Returns one project setting.
 	 *
-	 * @key          The setting name, for example "branch".
-	 * @defaultValue What to return when the setting is missing.
+	 * @key          The setting name, such as "branch".
+	 * @defaultValue The value to return when the setting is missing.
 	 */
 	function get( required string key, defaultValue = "" ){
 		return structKeyExists( variables.settings, arguments.key ) ? variables.settings[ arguments.key ] : arguments.defaultValue;
 	}
 
 	/**
-	 * Turns a path relative to the project root into a full path.
+	 * Converts a project-relative path to a full path.
 	 *
-	 * @relative A path relative to the project root, for example "CHANGELOG.md".
+	 * @relative A project-relative path, such as "CHANGELOG.md".
 	 */
 	string function repoPath( required string relative ){
 		return variables.root & "/" & arguments.relative;
 	}
 
-	/** The full path of the project root. */
+	/** Returns the full project root path. */
 	string function getRoot(){
 		return variables.root;
 	}
 
-	/** The settings file that was read, or an empty string when the project has none. */
+	/** Returns the settings file path or an empty string when no file exists. */
 	string function configPath(){
 		return variables.configPath;
 	}
 
-	/** Whether the settings came from build/build.json, the layout before 2.0. */
+	/** Returns true when the settings came from the old build/build.json location. */
 	boolean function isLegacyLayout(){
 		return variables.legacyLayout;
 	}
 
-	/** The installed kit's own version. Empty when it cannot be read. */
+	/** Returns the installed kit version or an empty string when it cannot be read. */
 	string function kitVersion(){
 		try {
 			return trim( deserializeJSON( fileRead( expandPath( "/build-template/box.json" ) ) ).version ?: "" );
@@ -88,48 +88,48 @@ component {
 		}
 	}
 
-	/** Reads and returns the project's box.json. */
+	/** Reads and returns the project's box.json data. */
 	struct function boxJSON(){
 		var path = repoPath( "box.json" );
 		if ( !fileExists( path ) ) {
-			throw( type = "BuildConfig", message = "No box.json found at #path#. Run release commands from a CommandBox project." );
+			throw( type = "BuildConfig", message = "No box.json file was found at #path#. Run release commands inside a CommandBox project." );
 		}
 		return deserializeJSON( fileRead( path ) );
 	}
 
-	/** The package slug from box.json, falling back to the package name. */
+	/** Returns the box.json slug. It uses the package name when the slug is missing. */
 	string function slug(){
 		var box = boxJSON();
 		return box.slug ?: ( box.name ?: "package" );
 	}
 
-	/** The version from box.json. */
+	/** Returns the version from box.json. */
 	string function version(){
 		return boxJSON().version ?: "0.0.0";
 	}
 
 	/**
-	 * Runs git, gh, or another program in the project root and returns its exit code and
-	 * output. Never throws; see ProcessRunner.
+	 * Runs git, gh, or another program in the project root. It returns the exit code and output
+	 * instead of throwing an exception. See ProcessRunner.
 	 *
-	 * @name The program name, for example "git".
-	 * @args The arguments, for example [ "status", "--porcelain" ].
+	 * @name The program name, such as "git".
+	 * @args The argument list, such as [ "status", "--porcelain" ].
 	 */
 	struct function execNative( required string name, array args = [] ){
 		return variables.processRunner.run( arguments.name, arguments.args, variables.root );
 	}
 
-	/** Whether a program can be found and run at all. */
+	/** Returns true when a program can be found and started. */
 	boolean function commandExists( required string name ){
 		return variables.processRunner.commandExists( arguments.name );
 	}
 
-	/** The full path of a program, or its bare name when it cannot be found. */
+	/** Returns a program's full path or its original name when no file is found. */
 	string function findBinary( required string name ){
 		return variables.processRunner.findBinary( arguments.name );
 	}
 
-	/** The exclude list the build actually uses: the base list plus anything in excludesAdd. */
+	/** Returns the main exclusion list followed by the entries in excludesAdd. */
 	array function allExcludes(){
 		var result = duplicate( variables.settings.excludes );
 		result.append( variables.settings.excludesAdd, true );
@@ -137,8 +137,8 @@ component {
 	}
 
 	/**
-	 * The address to check when asking "is the test server up?". It is the site root, not the
-	 * test runner: asking for the runner would start the whole suite.
+	 * Returns the site root URL used to check the test server. It does not return the test
+	 * runner URL because requesting that URL would start all tests.
 	 */
 	string function probeUrl(){
 		return reReplaceNoCase( variables.settings.testRunner, "^(https?://[^/]+).*$", "\1" ) & "/";
@@ -147,8 +147,8 @@ component {
 	// SETTINGS
 
 	/**
-	 * Builds the settings struct: start with the defaults, lay the settings file over the top,
-	 * then check the result makes sense.
+	 * Creates the final settings. It starts with defaults, applies file values, and checks the
+	 * result.
 	 */
 	private struct function loadSettings(){
 		var result   = defaults();
@@ -163,13 +163,13 @@ component {
 				} catch ( any exception ) {
 					throw(
 						type    = "BuildConfig",
-						message = "#fileName# is not valid JSON (#exception.message#). "
-							& "Two common causes are an unquoted value and a single backslash. "
-							& "Backslashes must be doubled in JSON, so a regular expression looks like ""\\.avif$""."
+						message = "#fileName# contains invalid JSON (#exception.message#). "
+							& "Check for values without quotes and single backslashes. "
+							& "JSON requires two backslashes, so a regular expression looks like ""\\.avif$""."
 					);
 				}
 				if ( !isStruct( userSettings ) ) {
-					throw( type = "BuildConfig", message = "#fileName# must hold a JSON object, for example { ""branch"": ""main"" }." );
+					throw( type = "BuildConfig", message = "#fileName# must contain a JSON object, such as { ""branch"": ""main"" }." );
 				}
 				result = merge( result, userSettings );
 			}
@@ -182,7 +182,7 @@ component {
 	}
 
 	/**
-	 * The settings used when build.json does not say otherwise.
+	 * Returns the settings used when build.json does not provide a value.
 	 */
 	private struct function defaults(){
 		return {
@@ -190,7 +190,7 @@ component {
 			"projectType"       : "module",
 			"branch"            : "main",
 			"changelog"         : "CHANGELOG.md",
-			// Empty means "work it out": box.json's testbox.runner, or the fallback below.
+			// An empty value uses testbox.runner from box.json or the default local URL.
 			"testRunner"        : "",
 			"runTests"          : true,
 			"gitSync"           : true,
@@ -208,8 +208,8 @@ component {
 	}
 
 	/**
-	 * Adjusts defaults to suit the project type. An app has nowhere to publish on ForgeBox, so
-	 * that step is off unless build.json turns it back on.
+	 * Changes defaults for the project type. An application does not publish to ForgeBox by
+	 * default. build.json can still enable ForgeBox publishing.
 	 */
 	private void function applyProjectTypeDefaults( required struct settings ){
 		if ( lCase( arguments.settings.projectType ) == "app" && !userTouched( "publish.forgebox" ) ) {
@@ -218,8 +218,8 @@ component {
 	}
 
 	/**
-	 * Works out the settings that can be read from the project itself, so build.json can stay
-	 * short. Right now that is the test runner URL, taken from box.json's testbox.runner.
+	 * Fills settings that can be read from the project. The current derived setting is the test
+	 * runner URL from testbox.runner in box.json.
 	 */
 	private void function fillDerivedDefaults( required struct settings ){
 		if ( len( trim( arguments.settings.testRunner ) ) ) {
@@ -235,9 +235,9 @@ component {
 	}
 
 	/**
-	 * Lays one struct over another. Nested structs are merged key by key so a build.json that
-	 * sets only publish.github keeps the default for publish.forgebox. Arrays replace whatever
-	 * they land on, because a half-replaced exclude list would be a puzzle to debug.
+	 * Applies one struct over another. It combines nested structs one key at a time. For example,
+	 * setting only publish.github keeps the default publish.forgebox value. An array replaces
+	 * the full default array so settings do not contain an unexpected mix of both lists.
 	 */
 	private struct function merge( required struct base, required struct overlay ){
 		var result = duplicate( arguments.base );
@@ -260,12 +260,12 @@ component {
 		return result;
 	}
 
-	/** Whether the settings file set a key, so dependent defaults do not overwrite a choice. */
+	/** Returns true when the settings file provided a key. */
 	private boolean function userTouched( required string key ){
 		return structKeyExists( variables.touchedKeys, arguments.key );
 	}
 
-	/** Runs each group of validation rules after all defaults are applied. */
+	/** Checks every setting after defaults and project values are applied. */
 	private void function validate( required struct settings ){
 		validateProjectSettings( arguments.settings );
 		validatePublishSettings( arguments.settings );
@@ -285,10 +285,10 @@ component {
 			);
 		}
 		if ( !len( trim( arguments.settings.branch ) ) ) {
-			throw( type = "BuildConfig", message = "build.json branch cannot be empty. Use the branch you release from, for example ""main""." );
+			throw( type = "BuildConfig", message = "build.json branch cannot be empty. Enter the release branch, such as ""main""." );
 		}
 		if ( !len( trim( arguments.settings.changelog ) ) ) {
-			throw( type = "BuildConfig", message = "build.json changelog cannot be empty. Name your changelog file, for example ""CHANGELOG.md""." );
+			throw( type = "BuildConfig", message = "build.json changelog cannot be empty. Enter the changelog filename, such as ""CHANGELOG.md""." );
 		}
 		if ( !isBoolean( arguments.settings.runTests ) ) {
 			throw( type = "BuildConfig", message = "build.json runTests must be true or false." );
@@ -326,7 +326,7 @@ component {
 			if ( !isStruct( engine ) || !structKeyExists( engine, "configFile" ) ) {
 				throw(
 					type    = "BuildConfig",
-					message = "Every entry in build.json engines needs a configFile, for example "
+				message = "Each build.json engine needs a configFile, such as "
 						& "{ ""name"": ""Lucee 5"", ""configFile"": ""server-lucee@5.json"" }."
 				);
 			}
@@ -347,15 +347,15 @@ component {
 		if ( !reFindNoCase( "^https?://", arguments.settings.testRunner ) ) {
 			throw(
 				type    = "BuildConfig",
-				message = "build.json testRunner must be a full URL, for example "
+				message = "build.json testRunner must be a full URL, such as "
 					& """http://127.0.0.1:60310/tests/runner.cfm""."
 			);
 		}
 	}
 
 	/**
-	 * A project can insist on a newer kit with minimumKitVersion. Every machine that releases
-	 * the project then gets the same behaviour, or a clear message to update.
+	 * Stops when minimumKitVersion requires a newer kit. This check keeps release behavior the
+	 * same on every computer used for the project.
 	 */
 	private void function validateKitVersion( required struct settings ){
 		var required  = trim( arguments.settings.minimumKitVersion ?: "" );
@@ -366,7 +366,7 @@ component {
 		if ( variables.versionService.compareVersions( installed, required ) < 0 ) {
 			throw(
 				type    = "BuildKit.KitTooOld",
-				message = "This project needs build-template #required# or newer, but #installed# is installed. "
+				message = "This project requires build-template #required# or newer. The installed version is #installed#. "
 					& "Run: box update build-template --system"
 			);
 		}

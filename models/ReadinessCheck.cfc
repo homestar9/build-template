@@ -1,18 +1,18 @@
 /**
- * Reports whether a project is ready for a release.
+ * Checks whether a project is ready for a release.
  *
- * `box release check` looks at the installed kit, the settings, the repository, the changelog,
- * the required tools, and the test server. It reports every problem it can find instead of
- * stopping after the first one.
+ * `box release check` checks the installed kit, project settings, Git repository, changelog,
+ * required tools, and test server. It reports all known problems instead of stopping after
+ * the first problem.
  *
- * It does not change files, Git state, servers, or remote services.
+ * It does not change files, Git data, servers, or remote services.
  */
 component extends="build-template.models.BaseKitService" {
 
 	/**
-	 * Runs every check for one project and prints a summary. Returns the number of problems.
+	 * Runs all checks, prints a summary, and returns the number of problems.
 	 *
-	 * @root The project root.
+	 * @root The project root folder.
 	 */
 	numeric function run( required string root ){
 		print.line().boldLine( "Release readiness" ).line( repeatString( "-", 60 ) ).toConsole();
@@ -22,8 +22,8 @@ component extends="build-template.models.BaseKitService" {
 		if ( len( configError ) ) {
 			report( true, "kit", "build-template " & kitVersion() );
 			report( false, "build.json", configError, "Fix build.json, then run this again." );
-			print.line().boldRedLine( "Cannot check anything else until the settings load." ).toConsole();
-			return stop( "Settings could not be read." );
+			print.line().boldRedLine( "The remaining checks need valid project settings." ).toConsole();
+			return stop( "The project settings could not be read." );
 		}
 
 		checkKit();
@@ -36,20 +36,20 @@ component extends="build-template.models.BaseKitService" {
 		print.line( repeatString( "-", 60 ) ).toConsole();
 		if ( variables.problems == 0 ) {
 			print
-				.boldGreenLine( "Everything looks ready." )
-				.line( "Next: box release run --dryRun to rehearse without publishing." )
+				.boldGreenLine( "The project is ready for a release." )
+				.line( "Next, practice the release without publishing: box release run --dryRun" )
 				.toConsole();
 		} else {
 			print
-				.boldYellowLine( "#variables.problems# thing#( variables.problems == 1 ? "" : "s" )# to sort out before releasing." )
+				.boldYellowLine( "Fix #variables.problems# problem#( variables.problems == 1 ? "" : "s" )# before releasing." )
 				.toConsole();
 		}
 		return variables.problems;
 	}
 
 	/**
-	 * Loads the settings, keeping any error for the report instead of stopping. Returns the
-	 * error message, or an empty string when the settings loaded.
+	 * Tries to load project settings without stopping the report. It returns the error message
+	 * or an empty string when the settings load.
 	 */
 	private string function loadProject( required string root ){
 		try {
@@ -65,25 +65,24 @@ component extends="build-template.models.BaseKitService" {
 	// READINESS CHECKS
 
 	/**
-	 * Reports the installed kit and where the settings came from, so a project still on the
-	 * 1.x layout or an old kit is told before anything else.
+	 * Reports the installed kit version and settings file. This first check identifies an old
+	 * kit or the 1.x settings location before other checks run.
 	 */
 	private function checkKit(){
 		print.line().boldLine( "Build kit" ).toConsole();
 		report( true, "kit", "build-template " & kitVersion() );
 
 		if ( !len( variables.config.configPath() ) ) {
-			report( false, "settings", "no build.json in the project", "Create one with: box release init" );
+			report( false, "settings", "build.json is missing", "Create it with: box release init" );
 		} else if ( variables.config.isLegacyLayout() ) {
-			report( false, "settings", "read from build/build.json, the 1.x layout", "Move to 2.0 with: box release migrate" );
+			report( false, "settings", "using the old build/build.json location", "Move the settings to 2.0 with: box release migrate" );
 		} else {
 			report( true, "settings", "build.json" );
 		}
 	}
 
 	/**
-	 * Reports the settings a release will use, so surprises show up here rather than mid
-	 * release.
+	 * Prints the settings that the release will use.
 	 */
 	private function checkConfig(){
 		print.line().boldLine( "Settings" ).toConsole();
@@ -99,7 +98,7 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Checks Git first. The remaining Git checks only run when the folder is a repository.
+	 * Checks for Git and a Git repository before running the other Git checks.
 	 */
 	private function checkGit(){
 		print.line().boldLine( "Git" ).toConsole();
@@ -110,12 +109,12 @@ component extends="build-template.models.BaseKitService" {
 				false,
 				"git",
 				"not found",
-				"Install git. If you just installed it, open a new terminal so it is picked up."
+				"Install Git. If you just installed it, open a new terminal so CommandBox can find it."
 			);
 			return;
 		}
 		if ( status.exitCode != 0 ) {
-			report( false, "git", "not a repository", "Run this from inside your project's git repository." );
+			report( false, "git", "not a repository", "Run this command inside the project's Git repository." );
 			return;
 		}
 		report( true, "git", "found at " & variables.config.findBinary( "git" ) );
@@ -132,10 +131,10 @@ component extends="build-template.models.BaseKitService" {
 				false,
 				"clean checkout",
 				"#changed# uncommitted change#( changed == 1 ? "" : "s" )#",
-				"Run git status, stage the intended files with git add, then commit them; a release refuses to start otherwise."
+				"Run git status. Stage the files with git add, and then commit them."
 			);
 		} else {
-			report( true, "clean checkout", "nothing uncommitted" );
+			report( true, "clean checkout", "no uncommitted changes" );
 		}
 	}
 
@@ -145,7 +144,7 @@ component extends="build-template.models.BaseKitService" {
 			report(
 				false,
 				"branch",
-				"on #branch#, releases come from production branch #variables.settings.branch#",
+				"current branch is #branch#. Releases use production branch #variables.settings.branch#",
 				"Switch with: git switch #variables.settings.branch#   (or correct ""branch"" in build.json)"
 			);
 		} else {
@@ -154,9 +153,9 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * A tag for the current version normally means it has been released. The exception is a
-	 * tag at the checked-out commit that origin has not seen, which is what a Gitflow finish
-	 * leaves behind before the release is published.
+	 * Checks whether the current version tag is already in use. A tag at the current commit is
+	 * still allowed when origin does not have it. Gitflow can leave a local-only tag before the
+	 * release is published.
 	 */
 	private void function checkVersionTag(){
 		var tagName = variables.settings.tagPrefix & variables.config.version();
@@ -172,7 +171,7 @@ component extends="build-template.models.BaseKitService" {
 			&& headCommit.exitCode == 0
 			&& trim( tagCommit.output ) == trim( headCommit.output );
 		if ( !tagAtHead ) {
-			report( false, "version", "#tagName# is already released", "Raise the version first: box release bump patch" );
+			report( false, "version", "#tagName# is already released", "Change the version first: box release bump patch" );
 			return;
 		}
 
@@ -181,11 +180,11 @@ component extends="build-template.models.BaseKitService" {
 			[ "ls-remote", "--exit-code", "--tags", "origin", "refs/tags/" & tagName ]
 		);
 		if ( remoteTag.exitCode == 0 ) {
-			report( false, "version", "#tagName# is already released (on origin)", "Raise the version first: box release bump patch" );
+			report( false, "version", "#tagName# is already released (on origin)", "Change the version first: box release bump patch" );
 		} else if ( remoteTag.exitCode == 2 ) {
-			report( true, "version", "#tagName# is tagged at this commit but not on origin; box release run --existingTag will push it" );
+			report( true, "version", "#tagName# points to this commit but is not on origin. box release run --existingTag will push it" );
 		} else {
-			report( true, "version", "#tagName# is tagged at this commit; could not check origin" );
+			report( true, "version", "#tagName# points to this commit. Origin could not be checked" );
 		}
 	}
 
@@ -196,7 +195,7 @@ component extends="build-template.models.BaseKitService" {
 				? "Your SSH key is not accepted. Add it at https://github.com/settings/ssh/new, "
 					& "or switch to HTTPS: git remote set-url origin "
 					& "https://github.com/<you>/<repo>.git && gh auth setup-git"
-				: "Check the remote and your access: git remote -v";
+				: "Check the remote address and your access: git remote -v";
 			report( false, "remote", "cannot reach origin", fix );
 		} else {
 			report( true, "remote", "origin reachable" );
@@ -204,7 +203,7 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Checks the changelog exists and holds what a release needs.
+	 * Checks that the changelog exists and contains the required sections.
 	 */
 	private function checkChangelog(){
 		print.line().boldLine( "Changelog" ).toConsole();
@@ -223,13 +222,14 @@ component extends="build-template.models.BaseKitService" {
 		var body    = fileRead( path );
 		var version = variables.config.version();
 
-		// A doubled ## in a CFML string means one literal #, so #### matches a "## " heading.
+		// CFML uses ## for one literal # inside a string. The #### pattern matches a Markdown
+		// level-two heading that starts with ##.
 		if ( !reFindNoCase( "####\s*\[Unreleased\]", body ) ) {
 			report(
 				false,
 				"[Unreleased]",
 				"no [Unreleased] section",
-				"Add a ""#### [Unreleased]"" heading and write new notes under it."
+				"Add a ""#### [Unreleased]"" heading. Write new notes below the heading."
 			);
 		} else {
 			report( true, "[Unreleased]", "present" );
@@ -243,14 +243,14 @@ component extends="build-template.models.BaseKitService" {
 				"notes for #version#",
 				"no ""#### [#version#]"" section",
 				variables.settings.publish.github
-					? "Run: box release bump patch  (moves [Unreleased] into a dated section)"
-					: "Only needed for a GitHub Release, which is off in build.json."
+					? "Run: box release bump patch  (moves [Unreleased] notes into a dated section)"
+					: "This section is only needed for a GitHub Release. GitHub publishing is off in build.json."
 			);
 		}
 	}
 
 	/**
-	 * Checks only the publishing tools enabled in build.json.
+	 * Checks the publishing tools that are enabled in build.json.
 	 */
 	private function checkTools(){
 		print.line().boldLine( "Tools" ).toConsole();
@@ -265,7 +265,7 @@ component extends="build-template.models.BaseKitService" {
 					false,
 					"GitHub CLI",
 					"not found",
-					"Install from https://cli.github.com then run: gh auth login. If you just installed it, open a new terminal."
+					"Install it from https://cli.github.com. Then run: gh auth login. Open a new terminal if you just installed it."
 				);
 			} else {
 				var auth = variables.config.execNative( "gh", [ "auth", "status" ] );
@@ -299,7 +299,7 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Checks the test server is answering, since the build runs the suite against it.
+	 * Checks the test server when the build is configured to run tests.
 	 */
 	private function checkServer(){
 		print.line().boldLine( "Test server" ).toConsole();
@@ -319,7 +319,7 @@ component extends="build-template.models.BaseKitService" {
 				false,
 				"test server",
 				"no answer at #probeUrl#",
-				"Start a server first, for example: box server start  (or set runTests false in build.json)"
+				"Start a server, such as: box server start  (or set runTests to false in build.json)"
 			);
 		}
 	}
@@ -327,12 +327,12 @@ component extends="build-template.models.BaseKitService" {
 	// REPORT OUTPUT
 
 	/**
-	 * Prints one result and counts the failures.
+	 * Prints one check result and counts failed checks.
 	 *
-	 * @passed  Whether the check passed.
-	 * @label   What was checked.
-	 * @detail  What was found.
-	 * @fix     What to do about it, shown only on a failure.
+	 * @passed  True when the check passed.
+	 * @label   The item that was checked.
+	 * @detail  The check result.
+	 * @fix     Instructions shown after a failed check.
 	 */
 	private function report( required boolean passed, required string label, string detail = "", string fix = "" ){
 		if ( arguments.passed ) {
@@ -346,7 +346,7 @@ component extends="build-template.models.BaseKitService" {
 		}
 	}
 
-	/** Turns true and false into yes and no for reading. */
+	/** Returns "yes" for true and "no" for false. */
 	private string function yesNo( required boolean value ){
 		return arguments.value ? "yes" : "no";
 	}

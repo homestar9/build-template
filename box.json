@@ -13,7 +13,7 @@
         "url":"https://github.com/homestar9/build-template/"
     },
     "bugs":"https://github.com/homestar9/build-template/issues",
-    "shortDescription":"A CommandBox module that releases CFML projects: check, bump, build, publish to ForgeBox, tag, and create a GitHub Release with one command each.",
+    "shortDescription":"A CommandBox module for checking, versioning, building, and publishing CFML projects to ForgeBox and GitHub.",
     "contributors":[],
     "scripts":{
         "test":"task run taskFile=tests/Run.cfc",

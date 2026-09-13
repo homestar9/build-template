@@ -1,18 +1,18 @@
 /**
- * Finds the project a command should work on.
+ * Finds the project for a release command.
  *
- * Commands run from wherever the shell happens to be, which may be a subfolder of the
- * project. The project root is the nearest folder at or above the shell's folder that holds
- * a box.json. The search stops at a folder holding .git without a box.json, so a command run
- * inside some unrelated repository does not wander up into a parent project.
+ * A command can run from the project root or one of its child folders. The nearest parent
+ * folder with box.json is the project root. The search stops when it finds .git without
+ * box.json. This rule prevents a command in an unrelated repository from using a project
+ * above that repository.
  */
 component singleton {
 
 	/**
-	 * Returns the project root for a starting folder, with forward slashes and no trailing
-	 * slash. Throws BuildKit.NoProject when there is none.
+	 * Returns the project root with forward slashes and no final slash. It throws
+	 * BuildKit.NoProject when no project is found.
 	 *
-	 * @startDir The folder to start from, normally the shell's current folder.
+	 * @startDir The first folder to check. This is usually the current folder.
 	 */
 	string function findRoot( required string startDir ){
 		var current = normalise( arguments.startDir );
@@ -33,17 +33,16 @@ component singleton {
 
 		throw(
 			type    = "BuildKit.NoProject",
-			message = "No box.json found in #arguments.startDir# or the folders above it. "
-				& "Run this from inside a CommandBox project, or create one with: package init"
+			message = "No box.json file was found in #arguments.startDir# or its parent folders. "
+				& "Run this command inside a CommandBox project, or create one with: package init"
 		);
 	}
 
 	/**
-	 * Returns where a project's build settings live: { path, legacy }. The path is empty when
-	 * the project has no settings file yet. Legacy is true when only the 1.x location,
-	 * build/build.json, exists.
+	 * Returns the settings path and a legacy flag. The path is empty when the project has no
+	 * settings file. legacy is true when settings use the old build/build.json location.
 	 *
-	 * @root The project root.
+	 * @root The project root folder.
 	 */
 	struct function configFile( required string root ){
 		var base = normalise( arguments.root );
@@ -56,7 +55,7 @@ component singleton {
 		return { path : "", legacy : false };
 	}
 
-	/** Forward slashes, no trailing slash. */
+	/** Changes a path to forward slashes and removes its final slash. */
 	private string function normalise( required string path ){
 		return reReplace( replace( arguments.path, "\", "/", "all" ), "/+$", "" );
 	}

@@ -1,33 +1,33 @@
 /**
- * Moves a project from the 1.x vendored kit to the 2.0 module.
+ * Moves a project from the copied 1.x kit to the 2.0 module.
  *
- * `box release migrate` moves build/build.json to build.json, deletes the kit's own files from
- * build/ (only the files 1.x shipped; anything else there is kept), and rewrites the box.json
- * scripts that pointed at those files so `box run-script release` keeps working. It prints
- * every change first, and with `--dryRun` it stops there.
+ * `box release migrate` moves build/build.json to build.json. It deletes only the files that
+ * the 1.x kit added under build/. It keeps every other file. It updates old box.json scripts
+ * so `box run-script release` still works. It lists all changes first. `--dryRun` stops after
+ * printing the list.
  */
 component extends="build-template.models.BaseKitService" {
 
 	property name="packageScripts" inject="PackageScriptService@build-template";
 
 	/**
-	 * Plans and applies the migration.
+	 * Lists and applies the migration changes.
 	 *
-	 * @root          The project root.
-	 * @dryRun        List the changes without making them.
-	 * @removeScripts Delete the 1.x box.json scripts instead of rewriting them.
+	 * @root          The project root folder.
+	 * @dryRun        Lists changes without applying them.
+	 * @removeScripts Deletes 1.x box.json scripts instead of updating them.
 	 */
 	function run( required string root, boolean dryRun = false, boolean removeScripts = false ){
 		variables.root = reReplace( replace( arguments.root, "\", "/", "all" ), "/+$", "" );
 
 		print.line().boldLine( "Migrating to build-template 2.0" ).line( repeatString( "-", 60 ) ).toConsole();
 		if ( arguments.dryRun ) {
-			print.boldYellowLine( "DRY RUN: nothing will be changed." ).toConsole();
+			print.boldYellowLine( "PRACTICE RUN: No files will change." ).toConsole();
 		}
 
 		var steps = plan( variables.root, arguments.removeScripts );
 		if ( !steps.filter( function( step ){ return listFindNoCase( "move,delete,prune,rewrite,remove", step.action ) > 0; } ).len() ) {
-			print.greenLine( "Nothing to migrate: this project already uses the 2.0 layout." ).toConsole();
+			print.greenLine( "Nothing to migrate. This project already uses the 2.0 layout." ).toConsole();
 			printNotes( steps );
 			return;
 		}
@@ -40,7 +40,7 @@ component extends="build-template.models.BaseKitService" {
 		}
 
 		if ( arguments.dryRun ) {
-			print.line().yellowLine( "Dry run: nothing was changed." ).toConsole();
+			print.line().yellowLine( "Practice run complete. No files changed." ).toConsole();
 			printNotes( steps );
 			return;
 		}
@@ -49,16 +49,17 @@ component extends="build-template.models.BaseKitService" {
 		printNotes( steps );
 		print
 			.line()
-			.boldGreenLine( "Migrated. Review with: git status  and  git diff" )
-			.line( "Then commit, and run: box release check" )
+			.boldGreenLine( "Migration complete. Review the changes with git status and git diff." )
+			.line( "Commit the changes, and then run: box release check" )
 			.toConsole();
 	}
 
 	/**
-	 * Works out every change without making any. Each entry is { action, path, detail }.
+	 * Returns every planned change without applying it. Each item contains action, path, and
+	 * detail values.
 	 *
-	 * @root          The project root.
-	 * @removeScripts Delete the 1.x scripts instead of rewriting them.
+	 * @root          The project root folder.
+	 * @removeScripts Deletes 1.x scripts instead of updating them.
 	 */
 	array function plan( required string root, boolean removeScripts = false ){
 		var base  = reReplace( replace( arguments.root, "\", "/", "all" ), "/+$", "" );
@@ -81,11 +82,11 @@ component extends="build-template.models.BaseKitService" {
 		}
 		if ( fileExists( target ) ) {
 			return stop(
-				"Both build.json and build/build.json exist. Keep the one you want as build.json, "
-				& "delete the other, and run this again."
+				"Both build.json and build/build.json exist. Choose the settings that you want to keep. "
+				& "Save them in build.json, delete build/build.json, and run this command again."
 			);
 		}
-		arguments.steps.append( { action : "move", path : "build/build.json -> build.json", detail : "adds minimumKitVersion, drops templateVersion" } );
+		arguments.steps.append( { action : "move", path : "build/build.json -> build.json", detail : "adds minimumKitVersion and removes templateVersion" } );
 	}
 
 	private void function planKitFiles( required string base, required array steps ){
@@ -107,12 +108,12 @@ component extends="build-template.models.BaseKitService" {
 			if ( relative == "build.json" || structKeyExists( shipped, lCase( relative ) ) ) {
 				continue;
 			}
-			arguments.steps.append( { action : "keep", path : "build/" & relative, detail : "not part of the kit, left alone" } );
+			arguments.steps.append( { action : "keep", path : "build/" & relative, detail : "not part of the kit; no change" } );
 		}
 
 		for ( var folder in [ "build/lib", "build/templates", "build" ] ) {
 			if ( directoryExists( arguments.base & "/" & folder ) && willBeEmpty( arguments.base & "/" & folder, arguments.steps ) ) {
-				arguments.steps.append( { action : "prune", path : folder & "/", detail : "empty afterwards" } );
+				arguments.steps.append( { action : "prune", path : folder & "/", detail : "empty after migration" } );
 			}
 		}
 	}
@@ -131,7 +132,7 @@ component extends="build-template.models.BaseKitService" {
 			arguments.steps.append( { action : "remove", path : "box.json scripts." & name, detail : len( modern[ name ] ) ? "" : "use: box update build-template --system" } );
 		}
 		for ( var name in outcome.kept ) {
-			arguments.steps.append( { action : "keep", path : "box.json scripts." & name, detail : "customised, left alone" } );
+			arguments.steps.append( { action : "keep", path : "box.json scripts." & name, detail : "project changed this script; no change" } );
 		}
 	}
 
@@ -141,7 +142,7 @@ component extends="build-template.models.BaseKitService" {
 			arguments.steps.append( {
 				action : "note",
 				path   : "RELEASE.md",
-				detail : "RELEASE.md describes the 1.x commands. Refresh it with: box release init --docs --force"
+				detail : "RELEASE.md contains 1.x commands. Replace it with: box release init --docs --force"
 			} );
 		}
 
@@ -173,7 +174,7 @@ component extends="build-template.models.BaseKitService" {
 					break;
 			}
 		}
-		// Prune innermost first; the plan lists lib and templates before build.
+		// Delete inner folders first. The plan lists lib and templates before build.
 		for ( var step in arguments.steps ) {
 			if ( step.action == "prune" ) {
 				var folder = variables.root & "/" & reReplace( step.path, "/$", "" );
@@ -188,14 +189,14 @@ component extends="build-template.models.BaseKitService" {
 	}
 
 	/**
-	 * Writes the settings to build.json without the two 1.x keys, and records the kit version
-	 * so future machines are told when they need a newer kit.
+	 * Moves the settings to build.json and removes two 1.x keys. It also records the current kit
+	 * version so other computers can report when their kit is too old.
 	 */
 	private void function moveSettings(){
 		var legacy   = variables.root & "/build/build.json";
 		var settings = deserializeJSON( fileRead( legacy ) );
 		if ( !isStruct( settings ) ) {
-			return stop( "build/build.json does not hold a JSON object, so it was not moved." );
+			return stop( "build/build.json must contain a JSON object. The file was not moved." );
 		}
 		structDelete( settings, "templateVersion" );
 		structDelete( settings, "_installerSeed" );
@@ -216,7 +217,7 @@ component extends="build-template.models.BaseKitService" {
 
 	// HELPERS
 
-	/** The files the 1.x kit placed inside build/, relative to that folder. */
+	/** Returns the files that the 1.x kit added under build/. */
 	private array function kitFiles(){
 		return [
 			"Release.cfc", "Build.cfc", "Bump.cfc", "Doctor.cfc", "TestEngines.cfc", "Install.cfc", "Update.cfc", "BuildConfig.cfc",
@@ -226,7 +227,7 @@ component extends="build-template.models.BaseKitService" {
 		];
 	}
 
-	/** Whether a folder holds nothing but files the plan deletes (and folders that empty out). */
+	/** Returns true when the migration will leave a folder empty. */
 	private boolean function willBeEmpty( required string folder, required array steps ){
 		var deleting = {};
 		for ( var step in arguments.steps ) {
@@ -253,11 +254,11 @@ component extends="build-template.models.BaseKitService" {
 	private void function warnIfDirty(){
 		var status = variables.wirebox.getInstance( "ProcessRunner@build-template" ).run( "git", [ "status", "--porcelain" ], variables.root );
 		if ( status.exitCode == 0 && len( trim( status.output ) ) ) {
-			print.yellowLine( "You have uncommitted changes. The migration is easiest to review from a clean tree, but it will go ahead." ).toConsole();
+			print.yellowLine( "You have uncommitted changes. The migration will continue, but a clean Git checkout is easier to review." ).toConsole();
 		}
 	}
 
-	/** The part of a path below a base folder, with forward slashes. */
+	/** Returns the part of a path below a base folder and uses forward slashes. */
 	private string function relativeTo( required string base, required string path ){
 		var normalisedBase = reReplace( replace( arguments.base, "\", "/", "all" ), "/$", "" );
 		var normalisedPath = replace( arguments.path, "\", "/", "all" );
