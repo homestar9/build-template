@@ -5,8 +5,11 @@
 ## It is kept here so it does not run inside the build kit repository itself.
 ##
 ## It runs after you push a version tag such as v1.2.3. You can also start it by hand from the
-## Actions tab. A tag run publishes the existing tag. A manual branch run lets Release.cfc
-## create the tag. Both paths build, test, and publish the package.
+## Actions tab. A tag run publishes the existing tag. A manual branch run lets the release
+## command create the tag. Both paths build, test, and publish the package.
+##
+## The build-template module is installed into the runner's CommandBox first, so the same
+## commands you use locally run here.
 ##
 ## Two secrets are needed in your repository settings:
 ##   FORGEBOX_API_TOKEN   from https://forgebox.io  (only if you publish to ForgeBox)
@@ -50,6 +53,7 @@ jobs:
       - name: Install dependencies
         run: |
           box install
+          box install build-template@^2.0.0
 
       - name: Start the test server
         run: |
@@ -71,7 +75,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          box task run taskFile=build/Release.cfc target=run \
-            :version=$(box package show version) \
-            :existingTag=${{ github.ref_type == 'tag' }} \
-            :buildID=${{ github.run_number }}
+          box release run \
+            version=$(box package show version) \
+            existingTag=${{ github.ref_type == 'tag' }} \
+            buildID=${{ github.run_number }}

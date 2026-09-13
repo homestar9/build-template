@@ -1,10 +1,10 @@
 {
-    "_installerSeed":true,
+    "minimumKitVersion":"2.0.0",
     "projectType":"module",
     "branch":"master",
     "changelog":"CHANGELOG.md",
     "testRunner":"",
-    "runTests":true,
+    "runTests":false,
     "publish":{
         "forgebox":true,
         "github":true
@@ -29,6 +29,6 @@
         "\\.(zip|tar|tar\\.gz|tgz|7z|rar)$",
         "^\\..*"
     ],
-    "excludesAdd":[],
+    "excludesAdd":["^testbox$","avif$","^build.json$"],
     "engines":[]
 }

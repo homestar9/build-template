@@ -1,10 +1,10 @@
 /** Tests project defaults and display values without reading the filesystem. */
-component extends="testbox.system.BaseSpec" {
+component extends="tests.support.KitSpec" {
 
 	function run(){
 		describe( "ProjectSettingsService", function(){
 			beforeEach( function(){
-				projectSettings = new build.lib.ProjectSettingsService();
+				projectSettings = kit( "ProjectSettingsService" );
 			} );
 
 			it( "detects modules and applications from the package type", function(){

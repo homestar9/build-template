@@ -1,107 +1,86 @@
-/** Locks the public task names and argument names used by scripts and documentation. */
-component extends="testbox.system.BaseSpec" {
+/** Locks the command signatures and model APIs that scripts and documentation depend on. */
+component extends="tests.support.KitSpec" {
 
 	function run(){
-		describe( "Public task API", function(){
-			it( "keeps every existing public function", function(){
-				var expectedFunctions = {
-					"build.Build"       : "buildSource,init,run,runTests",
-					"build.BuildConfig" : "allExcludes,boxJSON,buildPath,commandExists,execNative,findBinary,get,getRoot,getSettings,init,probeUrl,repoPath,slug,version",
-					"build.Bump"        : "init,run",
-					"build.Doctor"      : "init,run",
-					"build.Install"     : "run",
-					"build.Release"     : "github,init,preflight,run",
-					"build.TestEngines" : "init,run",
-					"build.Update"      : "init,run"
+		describe( "Public API", function(){
+			it( "keeps every command's parameters", function(){
+				var expectedParameters = {
+					"run"     : "version,dryRun,skipTests,existingTag,buildID",
+					"check"   : "",
+					"bump"    : "level,preid,dryRun,allowPrereleaseRetarget",
+					"package" : "projectName,version,buildID,branch,skipTests",
+					"engines" : "",
+					"init"    : "force,docs,ci",
+					"notes"   : "version",
+					"github"  : "version,dryRun,existingTag",
+					"migrate" : "dryRun,removeScripts",
+					"help"    : ""
 				};
-
-				for ( var componentName in expectedFunctions ) {
-					expect( publicFunctionNames( componentName ) ).toBe( expectedFunctions[ componentName ] );
+				for ( var commandName in expectedParameters ) {
+					expect( functionArgumentNames( "commands.release." & commandName, "run" ) )
+						.toBe( expectedParameters[ commandName ], "release " & commandName );
 				}
 			} );
 
-			it( "keeps the public task argument names", function(){
-				expect( functionArgumentNames( "build.Build", "run" ) )
-					.toBe( "projectName,version,buildID,branch,skipTests" );
-				expect( functionArgumentNames( "build.Build", "buildSource" ) )
-					.toBe( "projectName,version,buildID,branch,skipTests" );
-				expect( functionArgumentNames( "build.Bump", "run" ) )
-					.toBe( "level,preid,dryRun,allowPrereleaseRetarget" );
-				expect( functionArgumentNames( "build.Install", "run" ) ).toBe( "force" );
-				expect( functionArgumentNames( "build.Release", "run" ) )
-					.toBe( "version,dryRun,skipTests,existingTag,buildID" );
-				expect( functionArgumentNames( "build.Release", "preflight" ) )
-					.toBe( "version,dryRun,existingTag" );
-				expect( functionArgumentNames( "build.Release", "github" ) )
-					.toBe( "version,notesOnly,dryRun,existingTag" );
-				expect( functionArgumentNames( "build.Update", "run" ) ).toBe( "source,version,dryRun" );
-			} );
-
-			it( "keeps every existing public argument default", function(){
-				expectStringDefaults(
-					"build.Build",
-					[ "run", "buildSource" ],
-					[ "projectName", "version", "buildID", "branch" ],
-					""
-				);
-				expect( argumentDefault( "build.Build", "run", "skipTests" ) ).toBeFalse();
-				expect( argumentDefault( "build.Build", "buildSource", "skipTests" ) ).toBeFalse();
-
-				expect( argumentDefault( "build.BuildConfig", "get", "defaultValue" ) ).toBe( "" );
-				// Lucee records expression defaults as this metadata marker. The source still uses [].
-				expect( argumentDefault( "build.BuildConfig", "execNative", "args" ) )
-					.toBe( "[runtime expression]" );
-
-				expect( argumentDefault( "build.Bump", "run", "level" ) ).toBe( "patch" );
-				expect( argumentDefault( "build.Bump", "run", "preid" ) ).toBe( "" );
-				expect( argumentDefault( "build.Bump", "run", "dryRun" ) ).toBeFalse();
-				expect( argumentDefault( "build.Bump", "run", "allowPrereleaseRetarget" ) ).toBeFalse();
-				expect( argumentDefault( "build.Install", "run", "force" ) ).toBeFalse();
-
-				expectStringDefaults(
-					"build.Release",
-					[ "run" ],
-					[ "version", "buildID" ],
-					""
-				);
-				expectStringDefaults(
-					"build.Release",
-					[ "preflight", "github" ],
-					[ "version" ],
-					""
-				);
+			it( "keeps every command's defaults", function(){
+				expectStringDefaults( "commands.release.run", [ "version", "buildID" ], "" );
 				for ( var flag in [ "dryRun", "skipTests", "existingTag" ] ) {
-					expect( argumentDefault( "build.Release", "run", flag ) ).toBeFalse();
+					expect( argumentDefault( "commands.release.run", "run", flag ) ).toBeFalse();
 				}
-				for ( var flag in [ "dryRun", "existingTag" ] ) {
-					expect( argumentDefault( "build.Release", "preflight", flag ) ).toBeFalse();
-					expect( argumentDefault( "build.Release", "github", flag ) ).toBeFalse();
+				expect( argumentDefault( "commands.release.bump", "run", "level" ) ).toBe( "patch" );
+				expect( argumentDefault( "commands.release.bump", "run", "preid" ) ).toBe( "" );
+				expect( argumentDefault( "commands.release.bump", "run", "dryRun" ) ).toBeFalse();
+				expect( argumentDefault( "commands.release.bump", "run", "allowPrereleaseRetarget" ) ).toBeFalse();
+				expectStringDefaults( "commands.release.package", [ "projectName", "version", "buildID", "branch" ], "" );
+				expect( argumentDefault( "commands.release.package", "run", "skipTests" ) ).toBeFalse();
+				for ( var flag in [ "force", "docs", "ci" ] ) {
+					expect( argumentDefault( "commands.release.init", "run", flag ) ).toBeFalse();
 				}
-				expect( argumentDefault( "build.Release", "github", "notesOnly" ) ).toBeFalse();
+				expect( argumentDefault( "commands.release.notes", "run", "version" ) ).toBe( "" );
+				expect( argumentDefault( "commands.release.github", "run", "version" ) ).toBe( "" );
+				expect( argumentDefault( "commands.release.github", "run", "dryRun" ) ).toBeFalse();
+				expect( argumentDefault( "commands.release.github", "run", "existingTag" ) ).toBeFalse();
+				expect( argumentDefault( "commands.release.migrate", "run", "dryRun" ) ).toBeFalse();
+				expect( argumentDefault( "commands.release.migrate", "run", "removeScripts" ) ).toBeFalse();
+			} );
 
-				expectStringDefaults( "build.Update", [ "run" ], [ "source", "version" ], "" );
-				expect( argumentDefault( "build.Update", "run", "dryRun" ) ).toBeFalse();
+			it( "keeps every model's public functions", function(){
+				var expectedFunctions = {
+					"models.ProjectConfig"          : "allExcludes,boxJSON,commandExists,configPath,execNative,findBinary,get,getRoot,getSettings,init,isLegacyLayout,kitVersion,load,probeUrl,repoPath,slug,version",
+					"models.ProjectLocator"         : "configFile,findRoot",
+					"models.ProcessRunner"          : "commandExists,findBinary,init,run",
+					"models.ReleaseService"         : "github,notes,preflight,run",
+					"models.PackageBuilder"         : "buildSource,forProject,run,runTests",
+					"models.VersionBumper"          : "run",
+					"models.ReadinessCheck"         : "run",
+					"models.EngineRunner"           : "run",
+					"models.ProjectInstaller"       : "run",
+					"models.ProjectMigrator"        : "plan,run",
+					"models.PackageScriptService"   : "legacyScripts,migrateScripts,modernScripts",
+					"models.VersionService"         : "compareVersions,highestVersion,nextVersion,parseVersion,supportedLevels",
+					"models.ChangelogService"       : "extractReleaseNotes,moveUnreleasedNotes,versionHeadings",
+					"models.ProjectSettingsService" : "buildConfigDefaultExcludes,detectProjectType,detectTestRunner,engineName,installerDefaultExcludes,readableEngineName"
+				};
+				for ( var componentPath in expectedFunctions ) {
+					expect( publicFunctionNames( componentPath ) ).toBe( expectedFunctions[ componentPath ], componentPath );
+				}
 			} );
 		} );
 	}
 
 	private void function expectStringDefaults(
-		required string componentName,
-		required array functionNames,
+		required string componentPath,
 		required array argumentNames,
 		required string expectedValue
 	){
-		for ( var functionName in arguments.functionNames ) {
-			for ( var argumentName in arguments.argumentNames ) {
-				expect( argumentDefault( arguments.componentName, functionName, argumentName ) )
-					.toBe( arguments.expectedValue );
-			}
+		for ( var argumentName in arguments.argumentNames ) {
+			expect( argumentDefault( arguments.componentPath, "run", argumentName ) ).toBe( arguments.expectedValue );
 		}
 	}
 
-	private string function publicFunctionNames( required string componentName ){
+	private string function publicFunctionNames( required string componentPath ){
 		var names = [];
-		for ( var functionMetadata in getComponentMetadata( arguments.componentName ).functions ) {
+		for ( var functionMetadata in kitMeta( arguments.componentPath ).functions ) {
 			if ( ( functionMetadata.access ?: "public" ) == "public" ) {
 				names.append( functionMetadata.name );
 			}
@@ -110,11 +89,8 @@ component extends="testbox.system.BaseSpec" {
 		return arrayToList( names );
 	}
 
-	private string function functionArgumentNames(
-		required string componentName,
-		required string functionName
-	){
-		for ( var functionMetadata in getComponentMetadata( arguments.componentName ).functions ) {
+	private string function functionArgumentNames( required string componentPath, required string functionName ){
+		for ( var functionMetadata in kitMeta( arguments.componentPath ).functions ) {
 			if ( functionMetadata.name == arguments.functionName ) {
 				var names = [];
 				for ( var parameter in functionMetadata.parameters ) {
@@ -127,11 +103,11 @@ component extends="testbox.system.BaseSpec" {
 	}
 
 	private any function argumentDefault(
-		required string componentName,
+		required string componentPath,
 		required string functionName,
 		required string argumentName
 	){
-		for ( var functionMetadata in getComponentMetadata( arguments.componentName ).functions ) {
+		for ( var functionMetadata in kitMeta( arguments.componentPath ).functions ) {
 			if ( functionMetadata.name != arguments.functionName ) {
 				continue;
 			}
@@ -143,7 +119,7 @@ component extends="testbox.system.BaseSpec" {
 		}
 		throw(
 			type    = "PublicApiSpec.MissingArgument",
-			message = "Could not find #arguments.componentName#.#arguments.functionName# argument #arguments.argumentName#."
+			message = "Could not find #arguments.componentPath#.#arguments.functionName# argument #arguments.argumentName#."
 		);
 	}
 }

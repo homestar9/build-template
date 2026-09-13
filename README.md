@@ -2,37 +2,37 @@
 
 ![Build Template Logo](https://raw.githubusercontent.com/homestar9/build-template/refs/heads/master/build-template-logo.avif)
 
-`build-template` is a set of [CommandBox](https://www.ortussolutions.com/products/commandbox)
-tasks for CFML projects. Copy the `build` folder into a project and it can:
+`build-template` is a [CommandBox](https://www.ortussolutions.com/products/commandbox) module
+that releases CFML projects. Install it once on each machine and it gives you a `release`
+namespace that can:
 
 - run your TestBox tests;
 - build and check a release zip; and
 - publish the package to ForgeBox and GitHub.
 
-You control the build through `build/build.json`. You should not need to edit the CFML task
-files.
+Each project keeps only a small `build.json`. You never copy the kit into a repository, and
+one `box update` brings every project on the machine up to date.
 
 ## How a release works
 
 The normal release process has four parts:
 
 1. Write a short description of your changes under `[Unreleased]` in `CHANGELOG.md`.
-2. Run a `bump` command to update the version and date those notes.
+2. Run `box release bump` to update the version and date those notes.
 3. Check the project and rehearse the release.
 4. Run the real release.
 
-The release task stops if it finds a problem, such as uncommitted changes, a missing changelog
+The release stops if it finds a problem, such as uncommitted changes, a missing changelog
 entry, failed tests, or a version that has already been released.
 
 ## Before you install
 
-Every project needs:
+Every machine needs:
 
 - [CommandBox](https://www.ortussolutions.com/products/commandbox)
 - [Git](https://git-scm.com/)
-- a `box.json` file
 
-Depending on how your project is configured, you may also need:
+Depending on how a project is configured, you may also need:
 
 - [GitHub CLI](https://cli.github.com/) for GitHub Releases;
 - a ForgeBox account for ForgeBox publishing; and
@@ -47,54 +47,51 @@ box forgebox login
 
 ## Install
 
-1. Download or clone this repository.
-2. Copy the `build` folder into the root of your CFML project.
-3. Open a terminal in your project root and run:
+```bash
+box install build-template
+```
+
+That installs the module into CommandBox itself, so the commands are available in every
+project. Then, in a project's root folder:
 
 ```bash
-box task run taskFile=build/Install.cfc
+box release init
 ```
 
 The installer:
 
-- replaces the marked starter `build/build.json` with settings detected from your project;
-- adds build and release scripts to `box.json`;
-- creates `CHANGELOG.md` if the project does not have one; and
-- copies a detailed `RELEASE.md` guide into the project root.
+- writes `build.json` with settings detected from your project; and
+- creates `CHANGELOG.md` if the project does not have one.
 
-The starter marker only exists in the file shipped with this kit. The installer leaves every
-unmarked `build.json` and existing script alone, so rerunning it is safe. After installation,
-review `build/build.json` and correct anything the installer could not detect, especially the
-test runner URL and release branch.
+Add `--docs` to copy the detailed `RELEASE.md` guide into the project, and `--ci` to copy a
+GitHub Actions workflow to `.github/workflows/release.yml`. Rerunning it is safe: existing
+files are kept unless you pass `--force`. Afterwards, review `build.json` and correct anything
+the installer could not detect, especially the test runner URL and release branch.
 
 ## Update
 
-Once a project has the kit, bring it up to the latest release with:
-
 ```bash
-box run-script build-kit:update
+box update build-template --system
 ```
 
-The update task downloads the newest tagged build-template release, replaces the kit's own
-files (`build/*.cfc`, `build/lib/`, `build/templates/`, and `build/build-kit.json`), adds any
-new scripts to `box.json`, records the kit version as `templateVersion` in `build/build.json`,
-and prints the build-template changelog entries since the version the project was on. It never
-changes your settings in `build/build.json` and never deletes a file the kit does not ship.
+Every project on the machine uses the updated kit at once. A project can insist on a newer
+kit with `minimumKitVersion` in `build.json`; a machine with an older kit is told to update
+instead of releasing with the wrong behaviour.
 
-Useful variations:
+## Moving from 1.x
+
+Projects that copied the 1.x `build` folder keep working until you migrate them: the old
+`build/build.json` still loads, with a notice. To move a project over:
 
 ```bash
-box run-script build-kit:update :dryRun=true          # list what would change
-box run-script build-kit:update :version=1.5.0        # pick a release
-box run-script build-kit:update :source=../build-template   # use a local clone or zip
+box release migrate --dryRun
+box release migrate
 ```
 
-Review the result with `git diff build/ box.json`, then commit. If `build/templates/RELEASE.md`
-changed, copy it over the `RELEASE.md` in your project root unless you have customised yours.
-
-Projects that installed the kit before `build-kit:update` existed need one manual copy of the
-new `build` folder (keep your `build/build.json`), followed by the installer command above to
-add the new script. Every later update is one command.
+This moves `build/build.json` to `build.json`, deletes the kit's own files from `build/`
+(anything else in there is kept), and rewrites the 1.x `box run-script` entries in `box.json`
+to the new commands. Review with `git diff`, then commit. Add `--removeScripts` to delete the
+old scripts instead of rewriting them.
 
 ## Your first release
 
@@ -119,17 +116,17 @@ These notes become the body of the GitHub Release.
 For a bug fix, run:
 
 ```bash
-box run-script bump:patch
+box release bump patch
 ```
 
 This changes the version in `box.json` from `1.0.0` to `1.0.1` and moves the notes into a
 dated `1.0.1` section.
 
-Use a different command when needed:
+Use a different level when needed:
 
 ```bash
-box run-script bump:minor    # 1.0.0 -> 1.1.0 for a new feature
-box run-script bump:major    # 1.0.0 -> 2.0.0 for a breaking change
+box release bump minor    # 1.0.0 -> 1.1.0 for a new feature
+box release bump major    # 1.0.0 -> 2.0.0 for a breaking change
 ```
 
 ### 3. Review and commit the changes
@@ -143,9 +140,7 @@ git commit -m "Release 1.0.1"
 ```
 
 If your changelog has a different filename, use that filename in the `git add` command.
-`git status` lists the changed files, `git diff` lets you review them, and `git add` selects
-what the next commit will contain. `git diff --staged` previews that selection. The commit is
-only local until you send it to the remote with `git push`.
+The commit is only local until you send it to the remote with `git push`.
 
 **Using GitKraken or another Git GUI?** Review the changed `box.json` and changelog, stage only
 those release files, review the staged changes, commit them as `Release 1.0.1`, and then push
@@ -156,16 +151,17 @@ the current branch. Those are the GUI equivalents of the commands above.
 Start the project's test server if tests are enabled, then run:
 
 ```bash
-box run-script release:check
+box release check
 ```
 
-This command changes nothing. It checks the settings, Git repository, changelog, required
-tools, service logins, and test server. If something is wrong, it prints what to fix.
+This command changes nothing. It checks the installed kit, the settings, the Git repository,
+the changelog, the required tools, the service logins, and the test server. If something is
+wrong, it prints what to fix.
 
 ### 5. Rehearse the release
 
 ```bash
-box run-script release:dryrun
+box release run --dryRun
 ```
 
 The dry run executes the checks, tests, and package build, but does not publish, tag, or push
@@ -174,10 +170,10 @@ anything.
 ### 6. Publish
 
 ```bash
-box run-script release
+box release run
 ```
 
-The release task:
+The release:
 
 1. checks the project;
 2. fast-forwards the configured production branch from its Git remote;
@@ -187,35 +183,38 @@ The release task:
 
 The finished zip and checksum are saved under `.artifacts/`.
 
-## Common commands
+## Commands
+
+Run these from anywhere inside a project. `box release help` prints the same list.
 
 | Command | Use it to |
 | --- | --- |
-| `box run-script release:check` | Find anything that would stop a release. |
-| `box run-script release:dryrun` | Rehearse a release without publishing. |
-| `box run-script release` | Build and publish the current version. |
-| `box run-script release:existing-tag` | Publish a tag already created at the checked-out commit by Gitflow or GitKraken. Pushes the tag first if origin does not have it yet. |
-| `box run-script release:skip-tests` | Publish without rerunning tests that were already completed. |
-| `box run-script release:hotfix` | Alias for `release:skip-tests`; it does not manage a Gitflow hotfix branch. |
-| `box run-script bump:patch` | Release a backward-compatible bug fix. |
-| `box run-script bump:minor` | Release a backward-compatible feature. |
-| `box run-script bump:major` | Release a breaking change. |
-| `box run-script test:engines` | Run the test suite on each configured CFML engine. |
-| `box run-script build:package` | Build and check the zip without publishing it. |
-| `box run-script build-kit:update` | Bring the `build` folder up to the latest build-template release. |
+| `box release check` | Find anything that would stop a release. |
+| `box release run --dryRun` | Rehearse a release without publishing. |
+| `box release run` | Build and publish the current version. |
+| `box release run --existingTag` | Publish a tag already created at the checked-out commit by Gitflow or GitKraken. Pushes the tag first if origin does not have it yet. |
+| `box release run --skipTests` | Publish without rerunning tests that were already completed. |
+| `box release bump patch` | Release a backward-compatible bug fix. |
+| `box release bump minor` | Release a backward-compatible feature. |
+| `box release bump major` | Release a breaking change. |
+| `box release bump preminor beta` | Start a prerelease, for example `1.1.0-beta.1`. |
+| `box release package` | Build and check the zip without publishing it. |
+| `box release engines` | Run the test suite on each configured CFML engine. |
+| `box release notes` | Show the release notes for the current version. |
+| `box release github` | Finish a release that stopped after publishing. |
+| `box release init` | Set a project up: `build.json` and `CHANGELOG.md`. |
+| `box release migrate` | Move a project off the 1.x copied `build` folder. |
 
-The generated `RELEASE.md` explains Gitflow releases, prereleases, hotfixes, and recovery from
-a release that stops partway through.
+Full help for any command: `box help release run`.
 
 ## Common settings
 
-Edit `build/build.json` to change how the tasks work. The installer creates this file with
-values detected from your project and a complete package exclusion list. Keeping that list in
-the project makes its package contents predictable when the build kit is upgraded later.
+Edit `build.json` in the project root to change how the commands work. The installer creates
+this file with values detected from your project and a complete package exclusion list.
 
 ### Choose the production branch
 
-`branch` is the branch that receives release tags and published versions—normally `main` or
+`branch` is the branch that receives release tags and published versions, normally `main` or
 `master`. In a Gitflow repository it is the production branch, never `develop` or a temporary
 `release/*` branch. The installer reads Gitflow's configured production branch when available,
 but you should still verify the generated value.
@@ -225,6 +224,17 @@ but you should still verify the generated value.
     "branch": "main"
 }
 ```
+
+### Require a kit version
+
+```json
+{
+    "minimumKitVersion": "2.0.0"
+}
+```
+
+The installer writes the version it was run with. Raise it when the project starts depending
+on a newer kit feature.
 
 ### Publish to GitHub but not ForgeBox
 
@@ -285,7 +295,7 @@ Use double backslashes when a regular expression needs a backslash because the v
 
 ### Test more than one CFML engine
 
-During installation, `server.json` and every `server-*.json` file in the project root are
+During `release init`, `server.json` and every `server-*.json` file in the project root are
 added here in filename order. Nested server files are deliberately ignored. A readable name
 comes from `app.cfengine`, then the server's `name`, then its filename; review the generated
 list and remove any server that is not part of your compatibility suite.
@@ -310,7 +320,7 @@ Each `configFile` remains a CommandBox server JSON file in the project root:
 Run the configured list with:
 
 ```bash
-box run-script test:engines
+box release engines
 ```
 
 The engines run one at a time. Every engine still runs after a failure. The final report lists
@@ -320,41 +330,46 @@ all results, and the command returns an error when any engine failed.
 
 | Message | What to do |
 | --- | --- |
+| `Command "release" cannot be resolved` | The module is not installed in this CommandBox. Run `box install build-template`. |
+| `No box.json found` | Run the command from inside a CommandBox project. |
+| `This project needs build-template X or newer` | Run `box update build-template --system`. |
 | `You have uncommitted changes` | Commit or stash the changes, then run the command again. |
 | `No answer from the test server` | Start the project's test server, check `testRunner`, or turn off `runTests` if tests run elsewhere. |
 | `Could not find the GitHub CLI` | Install `gh`, open a new terminal, and run `gh auth login`. |
-| `has no "## [version]" section` | Add notes under `[Unreleased]`, then run the correct `bump` command. |
+| `has no "## [version]" section` | Add notes under `[Unreleased]`, then run `box release bump`. |
 | `Tag v1.2.3 already exists` | That version has already been released. Bump the version before trying again. |
 | `Tag v1.2.3 is on origin at a different commit` | Your local tag and the published tag disagree. Do not move the published tag; check the release history or choose a new version. |
 | `build.json is not valid JSON` | Check for missing quotes, trailing commas, or backslashes that need to be doubled. |
 
-Start with `box run-script release:check` when you are unsure. It reports all readiness
-problems without changing the project.
+Start with `box release check` when you are unsure. It reports all readiness problems without
+changing the project.
 
 ## Develop the build kit
 
-Install the development dependencies and run the build-kit tests:
+Install the development dependencies and run the tests:
 
 ```bash
 box install
-box run-script test:build-kit
+box run-script test
 ```
 
-The test command runs TestBox inside CommandBox. It does not need a web server. Unit tests cover
-the version, changelog, configuration, and project-detection rules. Integration tests copy the
-build kit into ignored `.test-work/` projects and use a local Git remote. The tests never
-publish to ForgeBox or GitHub.
+The test runner loads this checkout as the `build-template` module inside its own CommandBox,
+so the specs always exercise the working copy, even when a released copy is installed
+globally. Unit tests cover the version, changelog, configuration, project-detection, and
+migration rules. Integration tests create throwaway projects under the ignored `.test-work/`
+folder and run the real commands in them through `tests/support/Invoke.cfc`, with a local Git
+remote. The tests never publish to ForgeBox or GitHub.
 
-The public task components stay in `build/`. Pure rules that do not need CommandBox live in
-`build/lib/`. Keeping those rules separate makes the release workflow easier to read and test.
+To try the working copy as a real install, run `box install <path to this checkout>` and open a
+new shell; `box release help` should list the commands. The kit releases itself with its own
+`box release run`.
 
-When you release a new kit version, change the version in both `box.json` and
-`build/build-kit.json`. A test fails when the two disagree, because the update task reports and
-records the version from `build-kit.json`.
+The commands in `commands/release/` stay thin. The work happens in `models/`, and pure rules
+that do not need CommandBox live in their own components there so they are easy to test.
 
 ## More information
 
-- [Detailed release guide](build/templates/RELEASE.md)
-- [Optional GitHub Actions workflow](build/templates/github-release.yml)
+- [Detailed release guide](templates/RELEASE.md)
+- [Optional GitHub Actions workflow](templates/github-release.yml)
 - [Changelog](CHANGELOG.md)
 - [MIT License](LICENSE)

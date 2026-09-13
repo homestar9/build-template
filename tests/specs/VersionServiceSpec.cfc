@@ -1,10 +1,10 @@
 /** Tests every supported semantic-version change without reading project files. */
-component extends="testbox.system.BaseSpec" {
+component extends="tests.support.KitSpec" {
 
 	function run(){
 		describe( "VersionService", function(){
 			beforeEach( function(){
-				versionService = new build.lib.VersionService();
+				versionService = kit( "VersionService" );
 			} );
 
 			it( "lists every bump level accepted by Bump.cfc", function(){

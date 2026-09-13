@@ -1,10 +1,10 @@
-/** Runs public build tasks inside disposable projects and local Git repositories. */
-component extends="testbox.system.BaseSpec" {
+/** Runs the real release commands inside disposable projects and local Git repositories. */
+component extends="tests.support.KitSpec" {
 
 	function run(){
-		describe( "Build task integration", function(){
+		describe( "Release commands", function(){
 			beforeEach( function(){
-				fixtureProcess = new tests.support.FixtureProcess( findRepositoryRoot() );
+				fixtureProcess = new tests.support.FixtureProcess( repoRoot() );
 				fixtureRoot    = fixtureProcess.createProject();
 				originRoot     = "";
 			} );
@@ -14,7 +14,7 @@ component extends="testbox.system.BaseSpec" {
 				deleteDirectory( originRoot );
 			} );
 
-			it( "installs detected settings without replacing an existing script", function(){
+			it( "sets a project up with detected settings and leaves box.json scripts alone", function(){
 				writeJSON(
 					fixtureRoot & "/box.json",
 					{
@@ -28,43 +28,28 @@ component extends="testbox.system.BaseSpec" {
 				);
 				writeJSON( fixtureRoot & "/server-lucee@5.json", { app : { cfengine : "lucee@5" } } );
 
-				var installResult = fixtureProcess.runBox(
-					fixtureRoot,
-					[ "task", "run", "taskFile=build/Install.cfc" ]
-				);
-				expectCommand( installResult, "Install.cfc" );
+				var initResult = fixtureProcess.runKit( fixtureRoot, "release init" );
+				expectCommand( initResult, "release init" );
 
 				var packageData = deserializeJSON( fileRead( fixtureRoot & "/box.json" ) );
-				var settings    = deserializeJSON( fileRead( fixtureRoot & "/build/build.json" ) );
+				var settings    = deserializeJSON( fileRead( fixtureRoot & "/build.json" ) );
 				expect( packageData.scripts.release ).toBe( "keep this command" );
-				expect( packageData.scripts ).toHaveKey( "build:package" );
-				expect( packageData.scripts ).toHaveKey( "build-kit:update" );
-				expect( settings.templateVersion ).toBe( kitVersion() );
-				expect( packageData.scripts[ "bump:beta" ] )
-					.toBe( "task run taskFile=build/Bump.cfc :level=preminor :preid=beta" );
-				expect( packageData.scripts[ "bump:alpha" ] )
-					.toBe( "task run taskFile=build/Bump.cfc :level=preminor :preid=alpha" );
+				expect( packageData.scripts ).notToHaveKey( "build:package" );
 				expect( settings.projectType ).toBe( "module" );
+				expect( settings.minimumKitVersion ).toBe( kitVersion() );
 				expect( settings.testRunner ).toBe( "http://127.0.0.1:61000/tests/runner.cfm" );
 				expect( settings.engines[ 1 ].name ).toBe( "Lucee 5" );
 				expect( fileExists( fixtureRoot & "/CHANGELOG.md" ) ).toBeTrue();
+				expect( fileExists( fixtureRoot & "/RELEASE.md" ) ).toBeFalse();
+
+				var settingsBeforeSecondRun = fileRead( fixtureRoot & "/build.json" );
+				expectCommand( fixtureProcess.runKit( fixtureRoot, "release init --docs" ), "the second release init" );
+				expect( fileRead( fixtureRoot & "/build.json" ) ).toBe( settingsBeforeSecondRun );
 				expect( fileExists( fixtureRoot & "/RELEASE.md" ) ).toBeTrue();
 
-				var settingsBeforeSecondRun = fileRead( fixtureRoot & "/build/build.json" );
-				var secondRun = fixtureProcess.runBox(
-					fixtureRoot,
-					[ "task", "run", "taskFile=build/Install.cfc" ]
-				);
-				expectCommand( secondRun, "the second Install.cfc run" );
-				expect( fileRead( fixtureRoot & "/build/build.json" ) ).toBe( settingsBeforeSecondRun );
-
-				writeJSON( fixtureRoot & "/build/build.json", { custom : true } );
-				var forcedRun = fixtureProcess.runBox(
-					fixtureRoot,
-					[ "task", "run", "taskFile=build/Install.cfc", ":force=true" ]
-				);
-				expectCommand( forcedRun, "the forced Install.cfc run" );
-				var forcedSettings = deserializeJSON( fileRead( fixtureRoot & "/build/build.json" ) );
+				writeJSON( fixtureRoot & "/build.json", { custom : true } );
+				expectCommand( fixtureProcess.runKit( fixtureRoot, "release init --force" ), "the forced release init" );
+				var forcedSettings = deserializeJSON( fileRead( fixtureRoot & "/build.json" ) );
 				expect( forcedSettings ).toHaveKey( "projectType" );
 				expect( forcedSettings ).notToHaveKey( "custom" );
 			} );
@@ -75,82 +60,49 @@ component extends="testbox.system.BaseSpec" {
 				var packageBefore   = fileRead( fixtureRoot & "/box.json" );
 				var changelogBefore = fileRead( fixtureRoot & "/CHANGELOG.md" );
 
-				var dryRun = fixtureProcess.runBox(
-					fixtureRoot,
-					[ "task", "run", "taskFile=build/Bump.cfc", ":level=patch", ":dryRun=true" ]
-				);
-				expectCommand( dryRun, "the Bump.cfc dry run" );
+				var dryRun = fixtureProcess.runKit( fixtureRoot, "release bump patch --dryRun" );
+				expectCommand( dryRun, "the bump dry run" );
 				expect( fileRead( fixtureRoot & "/box.json" ) ).toBe( packageBefore );
 				expect( fileRead( fixtureRoot & "/CHANGELOG.md" ) ).toBe( changelogBefore );
 
-				var bump = fixtureProcess.runBox(
-					fixtureRoot,
-					[ "task", "run", "taskFile=build/Bump.cfc", ":level=patch" ]
-				);
-				expectCommand( bump, "Bump.cfc" );
+				var bump = fixtureProcess.runKit( fixtureRoot, "release bump patch" );
+				expectCommand( bump, "release bump patch" );
 				expect( deserializeJSON( fileRead( fixtureRoot & "/box.json" ) ).version ).toBe( "1.2.4" );
 				expect( fileRead( fixtureRoot & "/CHANGELOG.md" ) ).toInclude( versionHeading( "1.2.4" ) );
 			} );
 
-			it( "guards the beta and alpha preminor calls from retargeting an active prerelease", function(){
+			it( "guards beta and alpha bumps from retargeting an active prerelease", function(){
 				for ( var preid in [ "beta", "alpha" ] ) {
 					writeBasicProject( "1.2.0-#preid#.3" );
 					writeChangelog( true );
-					var packageBefore   = fileRead( fixtureRoot & "/box.json" );
-					var changelogBefore = fileRead( fixtureRoot & "/CHANGELOG.md" );
+					var packageBefore = fileRead( fixtureRoot & "/box.json" );
 
-					var guardedBump = fixtureProcess.runBox(
-						fixtureRoot,
-						[ "task", "run", "taskFile=build/Bump.cfc", ":level=preminor", ":preid=#preid#" ]
-					);
-
+					var guardedBump = fixtureProcess.runKit( fixtureRoot, "release bump preminor #preid#" );
 					expect( guardedBump.exitCode ).notToBe( 0 );
-					expect( guardedBump.output ).toInclude( "box run-script bump:prerelease" );
+					expect( guardedBump.output ).toInclude( "release bump prerelease" );
 					expect( fileRead( fixtureRoot & "/box.json" ) ).toBe( packageBefore );
-					expect( fileRead( fixtureRoot & "/CHANGELOG.md" ) ).toBe( changelogBefore );
 				}
 			} );
 
-			it( "guards direct preminor calls and permits an explicit retarget", function(){
+			it( "permits an explicit prerelease retarget", function(){
 				writeBasicProject( "1.2.0-rc.2" );
 				writeChangelog( true );
-				var packageBefore   = fileRead( fixtureRoot & "/box.json" );
-				var changelogBefore = fileRead( fixtureRoot & "/CHANGELOG.md" );
 
-				var guardedBump = fixtureProcess.runBox(
-					fixtureRoot,
-					[ "task", "run", "taskFile=build/Bump.cfc", ":level=preminor", ":preid=beta" ]
-				);
+				var guardedBump = fixtureProcess.runKit( fixtureRoot, "release bump preminor beta" );
 				expect( guardedBump.exitCode ).notToBe( 0 );
-				expect( guardedBump.output ).toInclude( "allowPrereleaseRetarget=true" );
-				expect( fileRead( fixtureRoot & "/box.json" ) ).toBe( packageBefore );
-				expect( fileRead( fixtureRoot & "/CHANGELOG.md" ) ).toBe( changelogBefore );
+				expect( guardedBump.output ).toInclude( "allowPrereleaseRetarget" );
 
-				var allowedBump = fixtureProcess.runBox(
-					fixtureRoot,
-					[
-						"task", "run", "taskFile=build/Bump.cfc", ":level=preminor", ":preid=beta",
-						":allowPrereleaseRetarget=true"
-					]
-				);
+				var allowedBump = fixtureProcess.runKit( fixtureRoot, "release bump preminor beta --allowPrereleaseRetarget" );
 				expectCommand( allowedBump, "the explicit prerelease retarget" );
-				expect( deserializeJSON( fileRead( fixtureRoot & "/box.json" ) ).version )
-					.toBe( "1.3.0-beta.1" );
+				expect( deserializeJSON( fileRead( fixtureRoot & "/box.json" ) ).version ).toBe( "1.3.0-beta.1" );
 			} );
 
-			it( "starts beta and alpha prereleases from a stable version", function(){
-				for ( var preid in [ "beta", "alpha" ] ) {
-					writeBasicProject( "1.0.0" );
-					writeChangelog( true );
-
-					var bump = fixtureProcess.runBox(
-						fixtureRoot,
-						[ "task", "run", "taskFile=build/Bump.cfc", ":level=preminor", ":preid=#preid#" ]
-					);
-					expectCommand( bump, "the stable #preid# bump" );
-					expect( deserializeJSON( fileRead( fixtureRoot & "/box.json" ) ).version )
-						.toBe( "1.1.0-#preid#.1" );
-				}
+			it( "starts a prerelease from a stable version", function(){
+				writeBasicProject( "1.0.0" );
+				writeChangelog( true );
+				var bump = fixtureProcess.runKit( fixtureRoot, "release bump preminor alpha" );
+				expectCommand( bump, "the stable alpha bump" );
+				expect( deserializeJSON( fileRead( fixtureRoot & "/box.json" ) ).version ).toBe( "1.1.0-alpha.1" );
 			} );
 
 			it( "builds a checked ZIP with tokens and exclusions", function(){
@@ -159,15 +111,11 @@ component extends="testbox.system.BaseSpec" {
 				directoryCreate( fixtureRoot & "/tests", true, true );
 				fileWrite( fixtureRoot & "/tests/not-shipped.txt", "excluded" );
 
-				var buildResult = fixtureProcess.runBox(
+				var buildResult = fixtureProcess.runKit(
 					fixtureRoot,
-					[
-						"task", "run", "taskFile=build/Build.cfc",
-						":projectName=sample", ":version=1.0.0", ":buildID=abc1234",
-						":branch=master", ":skipTests=true"
-					]
+					"release package projectName=sample version=1.0.0 buildID=abc1234 branch=master --skipTests"
 				);
-				expectCommand( buildResult, "Build.cfc" );
+				expectCommand( buildResult, "release package" );
 
 				var artifactRoot = fixtureRoot & "/.artifacts/sample/1.0.0";
 				var zipPath      = artifactRoot & "/sample-1.0.0.zip";
@@ -180,6 +128,7 @@ component extends="testbox.system.BaseSpec" {
 				cfzip( action = "list", file = zipPath, name = "local.zipEntries" );
 				var zipNames = valueArray( local.zipEntries.name ).toList( "," );
 				expect( zipNames ).notToInclude( "tests/not-shipped.txt" );
+				expect( zipNames ).notToInclude( "build.json" );
 			} );
 
 			it( "rehearses a release without creating or pushing a tag", function(){
@@ -188,17 +137,19 @@ component extends="testbox.system.BaseSpec" {
 				fileWrite( fixtureRoot & "/source.txt", "release fixture" );
 				createLocalGitRemote();
 
-				var releaseResult = fixtureProcess.runBox(
-					fixtureRoot,
-					[
-						"task", "run", "taskFile=build/Release.cfc", "target=run",
-						":version=1.0.0", ":dryRun=true", ":skipTests=true"
-					]
-				);
-				expectCommand( releaseResult, "the Release.cfc dry run" );
+				var releaseResult = fixtureProcess.runKit( fixtureRoot, "release run version=1.0.0 --dryRun --skipTests" );
+				expectCommand( releaseResult, "the release dry run" );
 				expect( releaseResult.output ).toInclude( "nothing will be published, tagged, or pushed" );
 				expect( fixtureProcess.runGit( fixtureRoot, [ "tag", "--list" ] ).output ).toBe( "" );
 				expect( fixtureProcess.runGit( originRoot, [ "tag", "--list" ] ).output ).toBe( "" );
+			} );
+
+			it( "finds the project from a subfolder", function(){
+				writeBasicProject( "1.0.0" );
+				directoryCreate( fixtureRoot & "/models", true, true );
+				var checkResult = fixtureProcess.runKit( fixtureRoot & "/models", "release check" );
+				expectCommand( checkResult, "release check from a subfolder" );
+				expect( checkResult.output ).toInclude( "sample 1.0.0" );
 			} );
 
 			it( "rehearses an existing-tag release whose tag is only local", function(){
@@ -234,89 +185,20 @@ component extends="testbox.system.BaseSpec" {
 				expect( releaseResult.output ).toInclude( "different commit" );
 			} );
 
-			// The github target really pushes the tag here, to the local bare origin. The GitHub
+			// The github command really pushes the tag here, to the local bare origin. The GitHub
 			// Release step after it cannot succeed: gh is either not installed or finds no GitHub
 			// host among the remotes, so the run stops there and nothing leaves this machine.
 			it( "pushes a local-only tag before creating the GitHub Release", function(){
 				writeTaggedReleaseProject();
 				expectCommand( runExistingTagDryRun(), "the dry run that builds the zip" );
 
-				var githubResult = fixtureProcess.runBox(
-					fixtureRoot,
-					[
-						"task", "run", "taskFile=build/Release.cfc", "target=github",
-						":version=1.0.0", ":existingTag=true"
-					]
-				);
+				var githubResult = fixtureProcess.runKit( fixtureRoot, "release github version=1.0.0 --existingTag" );
 				expect( githubResult.exitCode ).notToBe( 0 );
 				expect( githubResult.output ).toInclude( "Pushed tag v1.0.0 to origin" );
 				expect( githubResult.output ).notToInclude( "git push origin master" );
 				expect( fixtureProcess.runGit( originRoot, [ "tag", "--list" ] ).output ).toBe( "v1.0.0" );
 			} );
-
-			it( "updates the build kit from a local source without touching project settings", function(){
-				writeBasicProject( "1.0.0" );
-				var settings = deserializeJSON( fileRead( fixtureRoot & "/build/build.json" ) );
-				settings[ "templateVersion" ] = "1.0.0";
-				writeJSON( fixtureRoot & "/build/build.json", settings );
-
-				var repositoryRoot = findRepositoryRoot();
-				var doctorPath     = fixtureRoot & "/build/Doctor.cfc";
-				fileWrite( doctorPath, fileRead( doctorPath ) & chr( 10 ) & "// tampered" );
-				fileWrite( fixtureRoot & "/build/lib/Custom.cfc", "component {}" );
-				var updateArguments = [ "task", "run", "taskFile=build/Update.cfc", ":source=" & repositoryRoot ];
-				var dryRunArguments = duplicate( updateArguments );
-				dryRunArguments.append( ":dryRun=true" );
-
-				var dryRun = fixtureProcess.runBox( fixtureRoot, dryRunArguments );
-				expectCommand( dryRun, "the Update.cfc dry run" );
-				expect( dryRun.output ).toInclude( "update build/Doctor.cfc" );
-				expect( fileRead( doctorPath ) ).toInclude( "// tampered" );
-
-				var update = fixtureProcess.runBox( fixtureRoot, updateArguments );
-				expectCommand( update, "Update.cfc" );
-				expect( fileRead( doctorPath ) ).toBe( fileRead( repositoryRoot & "/build/Doctor.cfc" ) );
-				expect( fileExists( fixtureRoot & "/build/lib/Custom.cfc" ) ).toBeTrue();
-				expect( update.output ).toInclude( "1.0.0 -> " & kitVersion() );
-
-				var updatedSettings = deserializeJSON( fileRead( fixtureRoot & "/build/build.json" ) );
-				expect( updatedSettings.templateVersion ).toBe( kitVersion() );
-				expect( updatedSettings.branch ).toBe( "master" );
-				expect( updatedSettings.publish.forgebox ).toBeFalse();
-				expect( deserializeJSON( fileRead( fixtureRoot & "/box.json" ) ).scripts ).toHaveKey( "build-kit:update" );
-
-				var secondRun = fixtureProcess.runBox( fixtureRoot, updateArguments );
-				expectCommand( secondRun, "the second Update.cfc run" );
-				expect( secondRun.output ).toInclude( "already up to date" );
-			} );
 		} );
-	}
-
-	private string function kitVersion(){
-		return deserializeJSON( fileRead( findRepositoryRoot() & "/build/build-kit.json" ) ).version;
-	}
-
-	private void function writeTaggedReleaseProject(){
-		writeBasicProject( "1.0.0", true );
-		writeChangelog( false, "1.0.0" );
-		fileWrite( fixtureRoot & "/source.txt", "release fixture" );
-		createLocalGitRemote();
-		expectGit( fixtureProcess.runGit( fixtureRoot, [ "tag", "v1.0.0" ] ) );
-	}
-
-	private struct function runExistingTagDryRun(){
-		return fixtureProcess.runBox(
-			fixtureRoot,
-			[
-				"task", "run", "taskFile=build/Release.cfc", "target=run",
-				":version=1.0.0", ":existingTag=true", ":dryRun=true", ":skipTests=true"
-			]
-		);
-	}
-
-	private string function findRepositoryRoot(){
-		var buildPath = getComponentMetadata( "build.BuildConfig" ).path;
-		return reReplace( reReplace( getDirectoryFromPath( buildPath ), "[\\/]$", "" ), "[\\/][^\\/]+$", "" );
 	}
 
 	private void function writeBasicProject( required string version, boolean publishGitHub = false ){
@@ -325,7 +207,7 @@ component extends="testbox.system.BaseSpec" {
 			'{"name":"Sample","slug":"sample","version":"#arguments.version#","type":"commandbox-modules"}'
 		);
 		writeJSON(
-			fixtureRoot & "/build/build.json",
+			fixtureRoot & "/build.json",
 			{
 				projectType     : "module",
 				branch          : "master",
@@ -335,8 +217,8 @@ component extends="testbox.system.BaseSpec" {
 				gitSync         : true,
 				requireCleanTree: true,
 				publish         : { forgebox : false, github : arguments.publishGitHub },
-				excludes        : new build.lib.ProjectSettingsService().buildConfigDefaultExcludes(),
-				excludesAdd     : [],
+				excludes        : kit( "ProjectSettingsService" ).buildConfigDefaultExcludes(),
+				excludesAdd     : [ "^build\.json$" ],
 				engines         : []
 			}
 		);
@@ -360,6 +242,18 @@ component extends="testbox.system.BaseSpec" {
 
 	private string function versionHeading( required string version ){
 		return repeatString( chr( 35 ), 2 ) & " [#arguments.version#]";
+	}
+
+	private void function writeTaggedReleaseProject(){
+		writeBasicProject( "1.0.0", true );
+		writeChangelog( false, "1.0.0" );
+		fileWrite( fixtureRoot & "/source.txt", "release fixture" );
+		createLocalGitRemote();
+		expectGit( fixtureProcess.runGit( fixtureRoot, [ "tag", "v1.0.0" ] ) );
+	}
+
+	private struct function runExistingTagDryRun(){
+		return fixtureProcess.runKit( fixtureRoot, "release run version=1.0.0 --existingTag --dryRun --skipTests" );
 	}
 
 	private void function createLocalGitRemote(){
@@ -387,29 +281,6 @@ component extends="testbox.system.BaseSpec" {
 				message = "#arguments.label# returned exit code #arguments.result.exitCode#.",
 				detail  = arguments.result.output
 			);
-		}
-	}
-
-	private void function writeJSON( required string path, required struct data ){
-		fileWrite( arguments.path, serializeJSON( arguments.data ) );
-	}
-
-	/**
-	 * Removes a fixture. On Windows, Dropbox and antivirus scanners briefly hold files that
-	 * were just written, so the delete is retried and a leftover is tolerated: fixtures have
-	 * unique names inside the ignored .test-work folder, so one left behind harms nothing.
-	 */
-	private void function deleteDirectory( required string path ){
-		if ( !len( arguments.path ) || !directoryExists( arguments.path ) ) {
-			return;
-		}
-		for ( var attempt = 1; attempt <= 5; attempt++ ) {
-			try {
-				directoryDelete( arguments.path, true );
-				return;
-			} catch ( any deleteFailure ) {
-				sleep( 500 );
-			}
 		}
 	}
 }

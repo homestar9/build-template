@@ -13,7 +13,6 @@
 modules/
 testbox/
 server-*.json
-!build/templates/*.json
 
 # OS noise
 Thumbs.db

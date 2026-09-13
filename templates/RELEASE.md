@@ -1,26 +1,24 @@
 # Releasing this project
 
-The routine, start to finish. Settings live in [build/build.json](build/build.json); the
-commands below come from the build kit in [build/](build/).
+The routine, start to finish. Settings live in `build.json` in the project root; the commands
+come from the [build-template](https://github.com/homestar9/build-template) CommandBox module.
 
 ## One-time setup
 
 - **CommandBox** installed (`box version`).
+- **build-template** installed: `box install build-template`. Update it later with
+  `box update build-template --system`.
 - **GitHub CLI** signed in, if you publish GitHub Releases: `gh auth login`.
 - **ForgeBox** signed in, if you publish there: `box forgebox login`.
 - A test server you can start, unless `runTests` is off in build.json.
-- `branch` in build/build.json set to the production branch you publish from, normally `main`
-  or `master`. In Gitflow this is never `develop` or `release/*`.
+- `branch` in build.json set to the production branch you publish from, normally `main` or
+  `master`. In Gitflow this is never `develop` or `release/*`.
 
 Check all of it at once:
 
 ```
-box run-script release:check
+box release check
 ```
-
-To bring the build kit itself up to its latest release, run `box run-script build-kit:update`.
-It replaces the kit's files under `build/`, leaves `build/build.json` alone, and prints what
-changed. Add `:dryRun=true` to see the list first.
 
 ## The routine
 
@@ -32,7 +30,7 @@ project, because this text becomes the release notes.
 ### 2. Test on every engine
 
 ```
-box run-script test:engines
+box release engines
 ```
 
 Runs the whole suite on each engine in turn. A failed engine does not prevent the remaining
@@ -47,15 +45,15 @@ one engine.
 > sequence in the [Gitflow cheat sheet](#gitflow-cheat-sheet) below.
 
 ```
-box run-script bump:patch     # bug fixes           1.0.0 -> 1.0.1
-box run-script bump:minor     # new features        1.0.0 -> 1.1.0
-box run-script bump:major     # breaking changes    1.0.0 -> 2.0.0
+box release bump patch     # bug fixes           1.0.0 -> 1.0.1
+box release bump minor     # new features        1.0.0 -> 1.1.0
+box release bump major     # breaking changes    1.0.0 -> 2.0.0
 ```
 
 This raises the version in box.json and moves your `[Unreleased]` notes into a dated section.
 It does not commit anything.
 
-Add `:dryRun=true` to any of these to see what would change without writing anything.
+Add `--dryRun` to any of these to see what would change without writing anything.
 
 **Your notes are required.** If `[Unreleased]` is empty, nothing happens at all: no version
 change and no changelog change. The dated section becomes your release notes on GitHub, so an
@@ -66,7 +64,7 @@ empty one would ship a release nobody can interpret. Write a line first, even ju
 would skip that number. Date the notes without changing the version:
 
 ```
-box task run taskFile=build/Bump.cfc :level=none
+box release bump none
 ```
 
 #### Alphas and betas
@@ -76,29 +74,29 @@ follow the same rule, so finishing a beta lands on the version it was leading up
 stepping past it.
 
 ```
-box run-script bump:beta          # start one:  1.1.0 -> 1.2.0-beta.1
-box run-script bump:alpha         # the same, labelled alpha
-box run-script bump:prerelease    # step it on: 1.2.0-beta.1 -> 1.2.0-beta.2
-box run-script bump:patch         # finish it:  1.2.0-beta.2 -> 1.2.0
+box release bump preminor beta     # start one:  1.1.0 -> 1.2.0-beta.1
+box release bump preminor alpha    # the same, labelled alpha
+box release bump prerelease        # step it on: 1.2.0-beta.1 -> 1.2.0-beta.2
+box release bump patch             # finish it:  1.2.0-beta.2 -> 1.2.0
 ```
 
-`bump:beta` and `bump:alpha` start a prerelease of the next **minor** version. For a prerelease
-of the next patch or major instead, name the level yourself:
+`preminor` starts a prerelease of the next **minor** version. For a prerelease of the next
+patch or major instead, name the level yourself:
 
 ```
-box task run taskFile=build/Bump.cfc :level=prepatch     # 1.1.0 -> 1.1.1-beta.1
-box task run taskFile=build/Bump.cfc :level=preminor     # 1.1.0 -> 1.2.0-beta.1
-box task run taskFile=build/Bump.cfc :level=premajor     # 1.1.0 -> 2.0.0-beta.1
+box release bump prepatch     # 1.1.0 -> 1.1.1-beta.1
+box release bump premajor     # 1.1.0 -> 2.0.0-beta.1
 ```
 
 Starting the next minor prerelease is refused while any prerelease is active. This protects
 `1.2.0-beta.3`, for example, from accidentally becoming `1.3.0-beta.1`. Advance the active
-prerelease with `bump:prerelease`. To retarget it deliberately, add
-`:allowPrereleaseRetarget=true` to a direct `preminor` task call.
+prerelease with `box release bump prerelease`. To retarget it deliberately, add
+`--allowPrereleaseRetarget`.
 
-Add `:preid=rc` to a direct start command to use a different label. To switch the label of an
-active prerelease without changing its core version, use `:level=prerelease` with the new
-`:preid`; switching `1.2.0-alpha.7` to beta produces `1.2.0-beta.1`.
+Give the label as the second word to use a different one: `box release bump preminor rc`. To
+switch the label of an active prerelease without changing its core version, use `prerelease`
+with the new label; `box release bump prerelease beta` turns `1.2.0-alpha.7` into
+`1.2.0-beta.1`.
 
 A prerelease is flagged as one on GitHub automatically, because the version contains a hyphen.
 
@@ -108,7 +106,7 @@ Every level, for reference:
 | --- | --- |
 | `patch`, `minor`, `major` | Raise the version. On a prerelease, settle on the version it was leading up to. |
 | `prerelease` | Step an existing prerelease forward, `beta.3` to `beta.4`. |
-| `prepatch`, `preminor`, `premajor` | Start a prerelease. Uses `:preid=beta` unless you say otherwise. `preminor` refuses to retarget an active prerelease without `:allowPrereleaseRetarget=true`. |
+| `prepatch`, `preminor`, `premajor` | Start a prerelease. Labelled `beta` unless you name one. `preminor` refuses to retarget an active prerelease without `--allowPrereleaseRetarget`. |
 | `none` | Keep the version and just date the changelog. |
 
 ### 4. Check and commit
@@ -141,7 +139,7 @@ a commit look complete when a new release file was left out.
 ### 5. Rehearse (recommended the first few times)
 
 ```
-box run-script release:dryrun
+box release run --dryRun
 ```
 
 Runs the checks and the full build, then prints exactly what it would publish, tag, and push.
@@ -153,7 +151,7 @@ warns that the real release must still run from the configured production branch
 Start a test server first, unless `runTests` is off:
 
 ```
-box run-script release
+box release run
 ```
 
 That runs the checks, lines up with the remote, runs the tests, builds and verifies the
@@ -163,7 +161,7 @@ package, publishes it, tags the version, and creates the GitHub Release.
 
 In Gitflow, `develop` collects features, `release/<version>` prepares a release, and the
 production branch records published releases. A finished release must reach both production
-and `develop`. The build kit's `branch` setting always names production.
+and `develop`. The `branch` setting always names production.
 
 The branch order is the important part:
 
@@ -180,8 +178,8 @@ for the branch model.
 
 ### Plain Git or pull requests
 
-This path lets the build kit create the tag. The example releases `1.2.0`; substitute your
-version and production branch name.
+This path lets the release command create the tag. The example releases `1.2.0`; substitute
+your version and production branch name.
 
 1. Start from an up-to-date `develop` branch:
 
@@ -195,7 +193,7 @@ version and production branch name.
    on `develop`:
 
    ```
-   box run-script bump:minor
+   box release bump minor
    git diff -- box.json CHANGELOG.md
    git add box.json CHANGELOG.md
    git diff --staged
@@ -211,8 +209,8 @@ version and production branch name.
 3. Test and rehearse on the release branch:
 
    ```
-   box run-script test:engines
-   box run-script release:dryrun
+   box release engines
+   box release run --dryRun
    ```
 
 4. Merge `release/1.2.0` into both the production branch and `develop`. Use pull requests when
@@ -223,8 +221,8 @@ version and production branch name.
    ```
    git switch main
    git pull --ff-only origin main
-   box run-script release:check
-   box run-script release
+   box release check
+   box release run
    ```
 
 6. After the publish succeeds and both merges are present, delete the release branch locally
@@ -239,28 +237,28 @@ and is also bumped on its `hotfix/<version>` branch before being merged into pro
 GitKraken's **Finish release** action merges the release into production and `develop` and
 always creates a tag. It does not offer the command-line extension's no-tag finish option.
 Configure the version-tag prefix under **Preferences > Gitflow** to match `tagPrefix` in
-build/build.json; the usual value is `v`. See GitKraken's
+build.json; the usual value is `v`. See GitKraken's
 [Gitflow documentation](https://help.gitkraken.com/gitkraken-desktop/git-flow/).
 
 1. Create `release/1.2.0` from `develop` in GitKraken.
-2. On `release/1.2.0`, run `box run-script bump:minor`, review the files, and commit them.
-3. Test and run `box run-script release:dryrun` on the release branch.
+2. On `release/1.2.0`, run `box release bump minor`, review the files, and commit them.
+3. Test and run `box release run --dryRun` on the release branch.
 4. Use **Finish release**. GitKraken merges both branches and creates `v1.2.0`.
 5. Push production and `develop`, then check out the updated production branch. Pushing
-   `v1.2.0` yourself is optional when you publish locally: `release:existing-tag` pushes it if
-   origin does not have it yet. Push it yourself when the GitHub Actions workflow should
+   `v1.2.0` yourself is optional when you publish locally: `release run --existingTag` pushes
+   it if origin does not have it yet. Push it yourself when the GitHub Actions workflow should
    publish, because that push is what starts the workflow.
 6. Choose one publisher:
    - If the tag push triggers the supplied GitHub Actions workflow, let that workflow publish.
-   - To publish locally, run `box run-script release:existing-tag`.
+   - To publish locally, run `box release run --existingTag`.
 
-`release:existing-tag` runs the normal checks, tests, package build, ForgeBox publish, and
+`release run --existingTag` runs the normal checks, tests, package build, ForgeBox publish, and
 GitHub Release creation. It never creates or moves the tag. During its checks it asks origin
 about the tag: a tag origin does not have yet is pushed right before the GitHub Release is
 created, and a tag origin holds at a different commit stops the release before anything is
 published. It refuses unless the expected tag points exactly at the checked-out production
-commit. Do not run the ordinary `box run-script release` after GitKraken finishes; that command
-owns tag creation and therefore rejects an existing tag.
+commit. Do not run the ordinary `box release run` after GitKraken finishes; that command owns
+tag creation and therefore rejects an existing tag.
 
 ### Using the `git-flow` extension
 
@@ -268,7 +266,7 @@ The commands below use the extension's
 [documented release `finish` behavior](https://github.com/nvie/gitflow/blob/develop/git-flow-release)
 and its `-n` no-tag option.
 
-Set its version-tag prefix to the build kit's `tagPrefix` once. The default here is `v`:
+Set its version-tag prefix to the `tagPrefix` setting once. The default here is `v`:
 
 ```
 git config gitflow.prefix.versiontag v
@@ -276,15 +274,15 @@ git config gitflow.prefix.versiontag v
 
 Choose exactly one of these finish paths so only one tool owns the tag:
 
-- **Publish locally with the build kit:** run `git flow release finish -n 1.2.0` so Gitflow
-  performs both merges without tagging. Push production and `develop`, switch to production,
-  then run `box run-script release`; the build kit creates and pushes `v1.2.0`.
+- **Publish locally with the release command:** run `git flow release finish -n 1.2.0` so
+  Gitflow performs both merges without tagging. Push production and `develop`, switch to
+  production, then run `box release run`; the command creates and pushes `v1.2.0`.
 - **Let Gitflow create the tag:** run the normal `git flow release finish 1.2.0`, then push
   production, `develop`, and `v1.2.0`. Either let the tag-triggered GitHub Actions workflow
-  publish it or switch to production and run `box run-script release:existing-tag` locally.
+  publish it or switch to production and run `box release run --existingTag` locally.
 
 Never run the normal tagging form of `git flow release finish` and then run the ordinary
-`box run-script release` command. Both would try to own the same tag, and the ordinary command
+`box release run` command. Both would try to own the same tag, and the ordinary command
 correctly refuses.
 
 ### If the release tag already exists before Finish
@@ -298,11 +296,11 @@ git ls-remote --tags origin refs/tags/v1.2.0
 ```
 
 - If both finish merges already landed and `v1.2.0` points at production `HEAD`, do not Finish
-  again. Push any unpushed branches, then use `release:existing-tag` (which pushes the tag for
-  you) or push the tag to start the tag workflow.
+  again. Push any unpushed branches, then use `box release run --existingTag` (which pushes the
+  tag for you) or push the tag to start the tag workflow.
 - If the required merges have not landed, merge the release into production and `develop`
   manually or through pull requests so no tool tries to recreate the tag. The tag must resolve
-  to the final production `HEAD` before `release:existing-tag` will publish it.
+  to the final production `HEAD` before `release run --existingTag` will publish it.
 - If the tag is an accidental, local-only tag that has never been published or consumed,
   delete that local tag and then let GitKraken Finish. In GitKraken, right-click the tag and
   choose **Delete locally**; at the command line use `git tag -d v1.2.0`.
@@ -313,12 +311,11 @@ git ls-remote --tags origin refs/tags/v1.2.0
 ## Already tested and deliberately skipping the release test run?
 
 ```
-box run-script release:skip-tests
+box release run --skipTests
 ```
 
-Same as `release`, but skips the test suite and says so loudly. The older
-`box run-script release:hotfix` name remains as an alias. Neither command creates, merges, or
-finishes a Gitflow hotfix branch.
+Same as `release run`, but skips the test suite and says so loudly. It does not create, merge,
+or finish a Gitflow hotfix branch.
 
 ## If something fails partway
 
@@ -329,29 +326,33 @@ will refuse. The failure message prints the exact commands to finish by hand.
 To finish the tag and GitHub Release when the tag was not created yet:
 
 ```
-box task run taskFile=build/Release.cfc target=github :version=1.0.1
+box release github version=1.0.1
 ```
 
 If the failure message says the tag was already pushed, publish that existing tag instead:
 
 ```
-box task run taskFile=build/Release.cfc target=github :version=1.0.1 :existingTag=true
+box release github version=1.0.1 --existingTag
 ```
+
+To see the notes a version would get, run `box release notes 1.0.1`.
 
 ## Common problems
 
 | Message | What it means |
 | --- | --- |
+| `Command "release" cannot be resolved` | The module is not installed. Run `box install build-template`. |
+| `This project needs build-template X or newer` | Run `box update build-template --system`. |
 | `You have uncommitted changes` | Commit or stash first. The release refuses so the forced checkout cannot throw work away. |
 | `No answer from the test server` | Start your server, or set `runTests` to false in build.json. |
 | `Could not find the GitHub CLI` | Install it, then **open a new terminal**. A terminal keeps the PATH it started with. |
 | `Permission denied (publickey)` | git cannot sign in to your remote. Add your SSH key on GitHub, or switch the remote to HTTPS. |
-| `has no "## [1.0.1]" section` | Run a `bump:` command to move your notes into a dated section. |
+| `has no "## [1.0.1]" section` | Run `box release bump` to move your notes into a dated section. |
 | `The "## [Unreleased]" section is empty` | Write your release notes first. Nothing was changed. |
-| `is not a prerelease, so there is nothing to step forward` | Use `bump:beta` to start one, not `bump:prerelease`. |
-| `is already a prerelease, so preminor was stopped` | Use `bump:prerelease`, or add `:allowPrereleaseRetarget=true` when retargeting is deliberate. |
+| `is not a prerelease, so there is nothing to step forward` | Use `box release bump preminor beta` to start one, not `prerelease`. |
+| `is already a prerelease, so preminor was stopped` | Use `box release bump prerelease`, or add `--allowPrereleaseRetarget` when retargeting is deliberate. |
 | `Tag v1.0.1 already exists` | That version is already released. Raise the version. |
 | `Tag v1.0.1 already exists on origin` | Fetch tags and choose a version that has not already been published. |
 | `Tag v1.0.1 is on origin at a different commit` | Your local tag and the published one disagree. Do not move the published tag; check the release history or choose a new version. |
-| `tag v1.0.1 exists only in this checkout; it will be pushed` | Not a problem. `release:existing-tag` pushes the tag right before it creates the GitHub Release. |
+| `tag v1.0.1 exists only in this checkout; it will be pushed` | Not a problem. `release run --existingTag` pushes the tag right before it creates the GitHub Release. |
 | `Tag v1.0.1 does not point at the checked-out commit` | A tag-triggered build checked out the wrong source. Check the workflow ref and version. |

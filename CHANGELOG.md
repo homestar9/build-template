@@ -7,6 +7,35 @@ and the version numbers follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-13
+
+### Changed
+
+- build-template is now a CommandBox module installed once per machine with
+  `box install build-template`, instead of a `build` folder copied into every project. The
+  tasks became commands in the `release` namespace: `box release run`, `release check`,
+  `release bump <level>`, `release package`, `release engines`, `release init`,
+  `release notes`, `release github`, and `release migrate`. `box release help` lists them.
+- Project settings live in `build.json` in the project root. The 1.x `build/build.json` still
+  loads, with a notice, until `release migrate` moves it.
+- `minimumKitVersion` in `build.json` makes every machine refuse to release with an older kit
+  and prints the update command, so a project behaves the same wherever it is released.
+- Commands find the project from any folder inside it.
+- Updating the kit is `box update build-template --system`.
+
+### Removed
+
+- The vendored `build` folder, `Update.cfc`, `build-kit.json`, `templateVersion`, and the
+  installer-written box.json scripts. `release init` no longer writes scripts; `release
+  migrate` rewrites the 1.x ones to the new commands so `box run-script release` keeps working.
+
+### Migration from 1.x
+
+1. `box install build-template`
+2. In each project: `box release migrate --dryRun`, then `box release migrate`, review the
+   changes, commit.
+3. In CI, install the module before the release step. See `templates/github-release.yml`.
+
 ## [1.5.0] - 2026-09-13
 
 ### Added

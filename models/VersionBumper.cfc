@@ -1,29 +1,21 @@
 /**
  * Updates the project version and changelog for a release.
  *
- * Run `box run-script bump:patch`, `bump:minor`, or `bump:major` from the project root.
- * The task updates the version in box.json. It also moves the [Unreleased] notes into a dated
- * section for the new version.
+ * `box release bump patch`, `minor`, or `major` updates the version in box.json and moves the
+ * [Unreleased] notes into a dated section for the new version.
  *
- * The task does not commit, tag, or publish anything. Use `:dryRun=true` to preview the file
- * changes. Use `:level=none` for a first release that already has the correct version number.
+ * It does not commit, tag, or publish anything. Use `--dryRun` to preview the file changes.
+ * Use `none` for a first release that already has the correct version number.
  */
-component {
+component extends="build-template.models.BaseKitService" {
 
-	/** Loads the shared settings and the two services used by this task. */
-	function init(){
-		variables.config           = new BuildConfig( getDirectoryFromPath( getCurrentTemplatePath() ) );
-		variables.settings         = variables.config.getSettings();
-		variables.versionService   = new lib.VersionService();
-		variables.changelogService = new lib.ChangelogService();
-		return this;
-	}
+	property name="versionService"   inject="VersionService@build-template";
+	property name="changelogService" inject="ChangelogService@build-template";
 
 	/**
 	 * Calculates both file changes before writing either file.
 	 *
-	 * @level  How much to raise. See the list in nextVersion(), or run with an unknown level to
-	 *         have them printed.
+	 * @level  How much to raise: major, minor, patch, prerelease, premajor, preminor, prepatch, none.
 	 * @preid  The prerelease label to use, such as beta or alpha. Only used by the pre levels.
 	 *         Defaults to beta when starting a prerelease.
 	 * @dryRun Show what would change without writing anything.
@@ -44,7 +36,7 @@ component {
 					"major, minor, patch            raise the version. On a prerelease these settle on",
 					"                               the version it was leading up to.",
 					"prerelease                     step a prerelease forward, beta.3 to beta.4.",
-					"premajor, preminor, prepatch   start a prerelease, :preid=beta by default.",
+					"premajor, preminor, prepatch   start a prerelease, labelled beta unless you name one.",
 					"none                           keep the version and just date the changelog."
 				],
 				"The levels you can use"
@@ -61,15 +53,15 @@ component {
 			return fail(
 				"#currentVersion# is already a prerelease, so preminor was stopped before it could target the next minor version.",
 				[
-					"box run-script bump:prerelease              advance the current prerelease",
-					":allowPrereleaseRetarget=true               deliberately target the next minor prerelease"
+					"box release bump prerelease                       advance the current prerelease",
+					"box release bump preminor --allowPrereleaseRetarget   deliberately target the next minor prerelease"
 				],
 				"Choose the intended prerelease action"
 			);
 		}
-		var newVersion     = currentVersion;
-		var releaseDate    = dateFormat( now(), "yyyy-mm-dd" );
-		var newChangelog   = "";
+		var newVersion   = currentVersion;
+		var releaseDate  = dateFormat( now(), "yyyy-mm-dd" );
+		var newChangelog = "";
 
 		try {
 			if ( requestedLevel != "none" ) {
@@ -88,15 +80,15 @@ component {
 				return fail(
 					exception.message,
 					[
-						"box run-script bump:beta     the next minor release as a beta",
-						"box run-script bump:alpha    the same release with an alpha label",
-						":level=prepatch              a prerelease of the next patch",
-						":level=premajor              a prerelease of the next major"
+						"box release bump preminor beta     the next minor release as a beta",
+						"box release bump preminor alpha    the same release with an alpha label",
+						"box release bump prepatch          a prerelease of the next patch",
+						"box release bump premajor          a prerelease of the next major"
 					],
 					"To start a prerelease"
 				);
 			}
-			return error( exception.message );
+			return stop( exception.message );
 		}
 
 		if ( arguments.dryRun ) {
@@ -116,7 +108,7 @@ component {
 			setBoxVersion( newVersion );
 			print.greenLine( "box.json: #currentVersion# -> #newVersion#" ).toConsole();
 		} else {
-			print.greenLine( "box.json stays at #currentVersion# (level=none)." ).toConsole();
+			print.greenLine( "box.json stays at #currentVersion# (level none)." ).toConsole();
 		}
 
 		fileWrite( variables.config.repoPath( variables.settings.changelog ), newChangelog );
@@ -129,44 +121,19 @@ component {
 			.line( "  2. Stage:         git add box.json ""#variables.settings.changelog#""" )
 			.line( "  3. Check staged:  git diff --staged" )
 			.line( "  4. Commit:        git commit -m ""Release #newVersion#""" )
-			.line( "  5. Check:         box run-script release:check" )
-			.line( "  6. Release:       box run-script release" )
+			.line( "  5. Check:         box release check" )
+			.line( "  6. Release:       box release run" )
 			.toConsole();
 	}
 
 	// PRIVATE HELPERS
 
 	/**
-	 * Stops the task, printing guidance that spans several lines.
-	 *
-	 * CommandBox's error() removes line breaks from its message, so anything longer than a
-	 * sentence arrives as one run-together block. The guidance is printed first, where it keeps
-	 * its shape, and error() is left with the single line that says what went wrong. That is
-	 * also why the list appears above the error rather than below it: error() ends the task.
-	 *
-	 * @summary One line saying what went wrong.
-	 * @detail  Lines of guidance to print first.
-	 * @heading A short label for the guidance.
-	 */
-	private function fail( required string summary, array detail = [], string heading = "What to do" ){
-		if ( arrayLen( arguments.detail ) ) {
-			print.line().boldLine( arguments.heading & ":" ).toConsole();
-			for ( var line in arguments.detail ) {
-				print.yellowLine( "  " & line ).toConsole();
-			}
-			print.line().toConsole();
-		}
-		return error( arguments.summary );
-	}
-
-	/**
 	 * Writes the new version into box.json, replacing only that one value so the rest of the
 	 * file keeps its formatting.
-	 *
-	 * @version The new version.
 	 */
 	private function setBoxVersion( required string version ){
-		var boxPath    = variables.config.repoPath( "box.json" );
+		var boxPath     = variables.config.repoPath( "box.json" );
 		var packageText = fileRead( boxPath );
 
 		// Find the first "version":"..." and replace what sits between the quotes. This splices
@@ -175,7 +142,7 @@ component {
 		// characters.
 		var versionMatch = reFind( '("version"\s*:\s*")([^"]*)(")', packageText, 1, true );
 		if ( !arrayLen( versionMatch.pos ) || versionMatch.pos[ 1 ] == 0 ) {
-			return error( "Could not find a ""version"" entry in box.json." );
+			return stop( "Could not find a ""version"" entry in box.json." );
 		}
 		var valueStart  = versionMatch.pos[ 3 ];
 		var valueLength = versionMatch.len[ 3 ];
@@ -189,9 +156,6 @@ component {
 
 	/**
 	 * Reads the changelog and asks ChangelogService to build the updated text.
-	 *
-	 * @version The version to date the section with.
-	 * @date    Today, as YYYY-MM-DD.
 	 */
 	private string function buildChangelog( required string version, required string date ){
 		var changelogPath = variables.config.repoPath( variables.settings.changelog );
@@ -199,8 +163,7 @@ component {
 			throw(
 				type    = "BuildChangelog.MissingFile",
 				message = "No #variables.settings.changelog# found in the project root. "
-					& "Create one with an ""#### [Unreleased]"" section, or run: "
-					& "box task run taskFile=build/Install.cfc"
+					& "Create one with an ""#### [Unreleased]"" section, or run: box release init"
 			);
 		}
 

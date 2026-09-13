@@ -1,5 +1,5 @@
 /**
- * Creates disposable projects and runs local commands for integration specs.
+ * Creates disposable projects and runs commands in them for the integration specs.
  *
  * Every process runs inside a path supplied by the test. The helper captures combined output
  * and returns the exit code. It does not use a shell, so arguments are passed without quoting.
@@ -8,29 +8,42 @@ component {
 
 	function init( required string repositoryRoot ){
 		variables.repositoryRoot = arguments.repositoryRoot;
-		variables.config         = new build.BuildConfig( variables.repositoryRoot & "/build" );
+		variables.processRunner  = application.wirebox.getInstance( "ProcessRunner@build-template" );
 		return this;
 	}
 
-	/** Creates an empty temporary project with a copy of the build kit. */
+	/** Creates an empty temporary project folder. */
 	string function createProject(){
 		var projectRoot = variables.repositoryRoot & "/.test-work/build-template-integration-" & createUUID();
 		directoryCreate( projectRoot, true, true );
-		directoryCopy( variables.repositoryRoot & "/build", projectRoot & "/build", true );
-		if ( !fileExists( projectRoot & "/build/Build.cfc" ) ) {
-			throw(
-				type    = "BuildKit.FixtureCopy",
-				message = "The build kit was not copied into the integration fixture."
-			);
-		}
 		return projectRoot;
+	}
+
+	/**
+	 * Runs one release command inside a disposable project, through a fresh CommandBox that
+	 * loads the kit from this checkout. See tests/support/Invoke.cfc.
+	 *
+	 * @projectRoot The project to run in.
+	 * @line        The command line, for example "release bump patch --dryRun".
+	 */
+	struct function runKit( required string projectRoot, required string line ){
+		// No quotes around the value: the argument is passed to the process as one item, and
+		// Java quotes it for Windows itself. Literal quotes would be split apart instead.
+		return runBox(
+			arguments.projectRoot,
+			[
+				"task", "run",
+				"taskFile=" & variables.repositoryRoot & "/tests/support/Invoke.cfc",
+				":line=" & arguments.line
+			]
+		);
 	}
 
 	/** Runs CommandBox inside a disposable project. */
 	struct function runBox( required string projectRoot, required array args ){
 		return runProcess(
 			workingDirectory = arguments.projectRoot,
-			executable       = variables.config.findBinary( "box" ),
+			executable       = variables.processRunner.findBinary( "box" ),
 			args             = arguments.args
 		);
 	}
@@ -39,7 +52,7 @@ component {
 	struct function runGit( required string projectRoot, required array args ){
 		return runProcess(
 			workingDirectory = arguments.projectRoot,
-			executable       = variables.config.findBinary( "git" ),
+			executable       = variables.processRunner.findBinary( "git" ),
 			args             = arguments.args
 		);
 	}

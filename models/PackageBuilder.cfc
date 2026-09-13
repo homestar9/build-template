@@ -1,27 +1,24 @@
 /**
  * Builds and checks the package that can be published.
  *
- * Run `box run-script build:package` from the project root. The task runs the tests, copies
- * allowed source files into a clean staging folder, replaces version tokens, creates a ZIP,
- * verifies the ZIP, and writes checksum files.
+ * `box release package` runs the tests, copies allowed source files into a clean staging
+ * folder, replaces version tokens, creates a ZIP, verifies the ZIP, and writes checksum files.
  *
- * Build files are written under .artifacts/<slug>/<version>/. Use `:skipTests=true` only when
- * the same source has already passed its tests. Project settings come from build/build.json.
+ * Build files are written under .artifacts/<slug>/<version>/. Use `--skipTests` only when the
+ * same source has already passed its tests. Project settings come from build.json.
  */
-component {
+component extends="build-template.models.BaseKitService" {
 
-	/** Loads the settings and prepares empty staging and artifact folders. */
-	function init(){
-		variables.config = new BuildConfig( getDirectoryFromPath( getCurrentTemplatePath() ) );
-		variables.settings = variables.config.getSettings();
-		variables.root   = variables.config.getRoot();
-
-		variables.buildDir     = variables.root & "/" & variables.settings.stagingDir;
+	/**
+	 * Remembers the project and where its staging and artifact folders go. The folders are
+	 * cleared when the first build step runs, not here, so simply creating this component
+	 * changes nothing.
+	 */
+	function forProject( required any config ){
+		super.forProject( arguments.config );
+		variables.stagingRoot  = variables.root & "/" & variables.settings.stagingDir;
 		variables.artifactsDir = variables.root & "/" & variables.settings.artifactsDir;
-
-		prepareOutputDirectories();
-		configureColdBoxMapping();
-
+		variables.prepared     = false;
 		return this;
 	}
 
@@ -42,6 +39,7 @@ component {
 		string branch      = "",
 		boolean skipTests  = false
 	){
+		prepare();
 		fillDefaults( arguments );
 
 		if ( arguments.skipTests || !variables.settings.runTests ) {
@@ -58,7 +56,7 @@ component {
 		}
 
 		// Map the project so a build can load the project's own components if it needs to.
-		fileSystemUtil.createMapping( arguments.projectName, variables.root );
+		variables.fileSystemUtil.createMapping( arguments.projectName, variables.root );
 
 		buildSource( argumentCollection = arguments );
 		buildChecksums();
@@ -72,12 +70,12 @@ component {
 	function runTests(){
 		print.blueLine( "Running the test suite, please wait..." ).toConsole();
 
-		command( "testbox run" )
-			.params( runner = variables.settings.testRunner, verbose = false )
-			.run();
-
-		if ( shell.getExitCode() ) {
-			return error( "Stopping: the tests failed. Fix them, or use skipTests to build anyway." );
+		try {
+			command( "testbox run" )
+				.params( runner = variables.settings.testRunner, verbose = false )
+				.run();
+		} catch ( any exception ) {
+			return stop( "Stopping: the tests failed. Fix them, or use --skipTests to build anyway." );
 		}
 	}
 
@@ -97,6 +95,7 @@ component {
 		string branch      = "",
 		boolean skipTests  = false
 	){
+		prepare();
 		fillDefaults( arguments );
 
 		print
@@ -108,7 +107,7 @@ component {
 
 		ensureExportDir( arguments.projectName, arguments.version );
 
-		variables.projectBuildDir = variables.buildDir & "/#arguments.projectName#";
+		variables.projectBuildDir = variables.stagingRoot & "/#arguments.projectName#";
 		directoryCreate( variables.projectBuildDir, true, true );
 
 		copySourceToStaging();
@@ -122,13 +121,19 @@ component {
 
 	// BUILD STEPS
 
-	private void function prepareOutputDirectories(){
-		for ( var directoryPath in [ variables.buildDir, variables.artifactsDir ] ) {
+	/** Empties the staging and artifact folders once per build. */
+	private void function prepare(){
+		if ( variables.prepared ) {
+			return;
+		}
+		for ( var directoryPath in [ variables.stagingRoot, variables.artifactsDir ] ) {
 			if ( directoryExists( directoryPath ) ) {
 				directoryDelete( directoryPath, true );
 			}
 			directoryCreate( directoryPath, true, true );
 		}
+		configureColdBoxMapping();
+		variables.prepared = true;
 	}
 
 	private void function configureColdBoxMapping(){
@@ -138,7 +143,7 @@ component {
 
 		var coldboxPath = variables.root & "/" & variables.settings.coldboxMapping;
 		if ( directoryExists( coldboxPath ) ) {
-			fileSystemUtil.createMapping( "coldbox", coldboxPath );
+			variables.fileSystemUtil.createMapping( "coldbox", coldboxPath );
 		}
 	}
 
@@ -206,8 +211,6 @@ component {
 	/**
 	 * Fills in any argument left blank: the slug and version from box.json, the branch and
 	 * commit from git. Doing it here means every entry point behaves the same way.
-	 *
-	 * @args The argument struct, changed in place.
 	 */
 	private void function fillDefaults( required struct args ){
 		if ( !len( trim( arguments.args.projectName ?: "" ) ) ) {
@@ -286,32 +289,16 @@ component {
 	/**
 	 * Stops the build with a clear message when the test server is not answering. Kept separate
 	 * from runTests() so "the server is not running" never reads as "your tests failed".
-	 *
-	 * It asks for the site root rather than the test runner, because asking for the runner
-	 * would start the whole suite.
 	 */
 	private function ensureTestRunnerReachable(){
 		var probeUrl   = variables.config.probeUrl();
-		var httpResult = "";
-		try {
-			cfhttp(
-				url          = probeUrl,
-				method       = "GET",
-				timeout      = 15,
-				throwonerror = false,
-				redirect     = false,
-				result       = "local.httpResult"
-			);
-		} catch ( any ignoredException ) {
-			httpResult = { statuscode : "0" };
-		}
+		var statusCode = probe( probeUrl, 15 );
 		// Anything in the 200s or 300s means the site answered.
-		var statusCode = val( httpResult.statuscode ?: "0" );
 		if ( statusCode < 200 || statusCode >= 400 ) {
-			return error(
+			return stop(
 				"No answer from the test server at #probeUrl# (status #statusCode#). "
 				& "Start a server first, then run this again. "
-				& "To build without running the tests, add :skipTests=true."
+				& "To build without running the tests, add --skipTests."
 			);
 		}
 	}
@@ -346,8 +333,6 @@ component {
 	 * Counting catches any cause, including the one that started it. A published module once
 	 * shipped without several folders because an ignore rule quietly matched them, and nothing
 	 * failed until every app that installed it broke on startup.
-	 *
-	 * @zipPath The full path of the zip just written.
 	 */
 	private function verifyZip( required string zipPath ){
 		cfzip( action = "list", file = arguments.zipPath, name = "local.zipEntries" );
@@ -367,9 +352,9 @@ component {
 		}
 
 		if ( zippedCount != stagedCount ) {
-			return error(
+			return stop(
 				"The zip is incomplete: #stagedCount# files were staged but the zip holds #zippedCount#. "
-				& "Check .gitignore and the excludes in build/build.json for a rule matching source files. "
+				& "Check .gitignore and the excludes in build.json for a rule matching source files. "
 				& "Staging folder: #variables.projectBuildDir#"
 			);
 		}
@@ -383,15 +368,13 @@ component {
 	 *
 	 * Only top-level names are tested. A folder that survives is copied whole, so a file
 	 * inside it cannot be excluded from here.
-	 *
-	 * @src    The folder to copy from.
-	 * @target The folder to copy into.
 	 */
 	private function copy( required string src, required string target ){
 		var excludes = variables.config.allExcludes();
 		// Hold this in a plain variable: inside the closures below, "arguments" means the
 		// closure's own arguments, so arguments.target would be missing.
 		var targetDir = arguments.target;
+		var printer   = variables.print;
 
 		directoryList(
 			arguments.src,
@@ -410,10 +393,10 @@ component {
 		).each( function( item ){
 			var name = relativeName( item );
 			if ( fileExists( item ) ) {
-				print.blueLine( "  copy #name#" ).toConsole();
+				printer.blueLine( "  copy #name#" ).toConsole();
 				fileCopy( item, targetDir );
 			} else {
-				print.greenLine( "  copy folder #name#" ).toConsole();
+				printer.greenLine( "  copy folder #name#" ).toConsole();
 				directoryCopy( item, targetDir & "/" & name, true );
 			}
 		} );
@@ -426,8 +409,6 @@ component {
 	 * Both sides are put into the same shape first. directoryList returns paths using the
 	 * system separator, so comparing them against a path built with a different separator
 	 * quietly matches nothing and leaves the full path in place.
-	 *
-	 * @path The full path to shorten.
 	 */
 	private string function relativeName( required string path ){
 		var normalisedPath = replace( arguments.path, "\", "/", "all" );
@@ -440,9 +421,6 @@ component {
 
 	/**
 	 * Creates .artifacts/<name>/<version>/ and remembers it for the rest of the build.
-	 *
-	 * @projectName The package name.
-	 * @version     The version being built.
 	 */
 	private function ensureExportDir( required string projectName, required string version ){
 		if ( structKeyExists( variables, "exportsDir" ) && directoryExists( variables.exportsDir ) ) {

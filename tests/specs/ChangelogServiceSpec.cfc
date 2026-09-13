@@ -1,10 +1,10 @@
 /** Tests changelog section changes with both common line-ending styles. */
-component extends="testbox.system.BaseSpec" {
+component extends="tests.support.KitSpec" {
 
 	function run(){
 		describe( "ChangelogService", function(){
 			beforeEach( function(){
-				changelogService = new build.lib.ChangelogService();
+				changelogService = kit( "ChangelogService" );
 			} );
 
 			it( "moves unreleased notes into a dated section", function(){

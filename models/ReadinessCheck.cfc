@@ -1,40 +1,32 @@
 /**
- * Reports whether the project is ready for a release.
+ * Reports whether a project is ready for a release.
  *
- * Run `box run-script release:check` from the project root. The task checks the settings,
- * repository, changelog, required tools, and test server. It reports every problem it can find
- * instead of stopping after the first problem.
+ * `box release check` looks at the installed kit, the settings, the repository, the changelog,
+ * the required tools, and the test server. It reports every problem it can find instead of
+ * stopping after the first one.
  *
- * This task does not change files, Git state, servers, or remote services.
+ * It does not change files, Git state, servers, or remote services.
  */
-component {
-
-	/** Loads settings while keeping configuration errors for the final report. */
-	function init(){
-		variables.configError = "";
-		try {
-			variables.config = new BuildConfig( getDirectoryFromPath( getCurrentTemplatePath() ) );
-			variables.settings      = variables.config.getSettings();
-		} catch ( any exception ) {
-			variables.configError = exception.message;
-		}
-		return this;
-	}
+component extends="build-template.models.BaseKitService" {
 
 	/**
-	 * Runs every check and prints a summary.
+	 * Runs every check for one project and prints a summary. Returns the number of problems.
+	 *
+	 * @root The project root.
 	 */
-	function run(){
+	numeric function run( required string root ){
 		print.line().boldLine( "Release readiness" ).line( repeatString( "-", 60 ) ).toConsole();
 
-		if ( len( variables.configError ) ) {
-			report( false, "build.json", variables.configError, "Fix build/build.json, then run this again." );
+		variables.problems = 0;
+		var configError    = loadProject( arguments.root );
+		if ( len( configError ) ) {
+			report( true, "kit", "build-template " & kitVersion() );
+			report( false, "build.json", configError, "Fix build.json, then run this again." );
 			print.line().boldRedLine( "Cannot check anything else until the settings load." ).toConsole();
-			return error( "Settings could not be read." );
+			return stop( "Settings could not be read." );
 		}
 
-		variables.problems = 0;
-
+		checkKit();
 		checkConfig();
 		checkGit();
 		checkChangelog();
@@ -45,16 +37,49 @@ component {
 		if ( variables.problems == 0 ) {
 			print
 				.boldGreenLine( "Everything looks ready." )
-				.line( "Next: box run-script release:dryrun to rehearse without publishing." )
+				.line( "Next: box release run --dryRun to rehearse without publishing." )
 				.toConsole();
 		} else {
 			print
 				.boldYellowLine( "#variables.problems# thing#( variables.problems == 1 ? "" : "s" )# to sort out before releasing." )
 				.toConsole();
 		}
+		return variables.problems;
+	}
+
+	/**
+	 * Loads the settings, keeping any error for the report instead of stopping. Returns the
+	 * error message, or an empty string when the settings loaded.
+	 */
+	private string function loadProject( required string root ){
+		try {
+			variables.config   = variables.wirebox.getInstance( "ProjectConfig@build-template" ).load( arguments.root );
+			variables.settings = variables.config.getSettings();
+			variables.root     = variables.config.getRoot();
+			return "";
+		} catch ( any exception ) {
+			return exception.message;
+		}
 	}
 
 	// READINESS CHECKS
+
+	/**
+	 * Reports the installed kit and where the settings came from, so a project still on the
+	 * 1.x layout or an old kit is told before anything else.
+	 */
+	private function checkKit(){
+		print.line().boldLine( "Build kit" ).toConsole();
+		report( true, "kit", "build-template " & kitVersion() );
+
+		if ( !len( variables.config.configPath() ) ) {
+			report( false, "settings", "no build.json in the project", "Create one with: box release init" );
+		} else if ( variables.config.isLegacyLayout() ) {
+			report( false, "settings", "read from build/build.json, the 1.x layout", "Move to 2.0 with: box release migrate" );
+		} else {
+			report( true, "settings", "build.json" );
+		}
+	}
 
 	/**
 	 * Reports the settings a release will use, so surprises show up here rather than mid
@@ -62,11 +87,11 @@ component {
 	 */
 	private function checkConfig(){
 		print.line().boldLine( "Settings" ).toConsole();
-		report( true, "build.json", "loaded" );
 		var publishSummary = "ForgeBox=#yesNo( variables.settings.publish.forgebox )#  "
 			& "GitHub=#yesNo( variables.settings.publish.github )#";
 		print
 			.line( "        project:   #variables.config.slug()# #variables.config.version()# (#variables.settings.projectType#)" )
+			.line( "        root:      #variables.root#" )
 			.line( "        branch:    #variables.settings.branch#" )
 			.line( "        publish:   #publishSummary#" )
 			.line( "        tests:     #( variables.settings.runTests ? "run during build" : "OFF in build.json" )#" )
@@ -121,7 +146,7 @@ component {
 				false,
 				"branch",
 				"on #branch#, releases come from production branch #variables.settings.branch#",
-				"Switch with: git switch #variables.settings.branch#   (or correct ""branch"" in build/build.json)"
+				"Switch with: git switch #variables.settings.branch#   (or correct ""branch"" in build.json)"
 			);
 		} else {
 			report( true, "branch", branch );
@@ -147,7 +172,7 @@ component {
 			&& headCommit.exitCode == 0
 			&& trim( tagCommit.output ) == trim( headCommit.output );
 		if ( !tagAtHead ) {
-			report( false, "version", "#tagName# is already released", "Raise the version first: box run-script bump:patch" );
+			report( false, "version", "#tagName# is already released", "Raise the version first: box release bump patch" );
 			return;
 		}
 
@@ -156,9 +181,9 @@ component {
 			[ "ls-remote", "--exit-code", "--tags", "origin", "refs/tags/" & tagName ]
 		);
 		if ( remoteTag.exitCode == 0 ) {
-			report( false, "version", "#tagName# is already released (on origin)", "Raise the version first: box run-script bump:patch" );
+			report( false, "version", "#tagName# is already released (on origin)", "Raise the version first: box release bump patch" );
 		} else if ( remoteTag.exitCode == 2 ) {
-			report( true, "version", "#tagName# is tagged at this commit but not on origin; release:existing-tag will push it" );
+			report( true, "version", "#tagName# is tagged at this commit but not on origin; box release run --existingTag will push it" );
 		} else {
 			report( true, "version", "#tagName# is tagged at this commit; could not check origin" );
 		}
@@ -190,7 +215,7 @@ component {
 				false,
 				variables.settings.changelog,
 				"missing",
-				"Create it: box task run taskFile=build/Install.cfc"
+				"Create it: box release init"
 			);
 			return;
 		}
@@ -218,7 +243,7 @@ component {
 				"notes for #version#",
 				"no ""#### [#version#]"" section",
 				variables.settings.publish.github
-					? "Run: box run-script bump:patch  (moves [Unreleased] into a dated section)"
+					? "Run: box release bump patch  (moves [Unreleased] into a dated section)"
 					: "Only needed for a GitHub Release, which is off in build.json."
 			);
 		}
@@ -285,20 +310,7 @@ component {
 		}
 
 		var probeUrl   = variables.config.probeUrl();
-		var httpResult = "";
-		try {
-			cfhttp(
-				url          = probeUrl,
-				method       = "GET",
-				timeout      = 15,
-				throwonerror = false,
-				redirect     = false,
-				result       = "local.httpResult"
-			);
-		} catch ( any ignoredException ) {
-			httpResult = { statuscode : "0" };
-		}
-		var statusCode = val( httpResult.statuscode ?: "0" );
+		var statusCode = probe( probeUrl, 15 );
 
 		if ( statusCode >= 200 && statusCode < 400 ) {
 			report( true, "test server", "answering at #probeUrl# (status #statusCode#)" );
@@ -307,7 +319,7 @@ component {
 				false,
 				"test server",
 				"no answer at #probeUrl#",
-				"Start a server first, for example: box run-script start:2023  (or set runTests false in build/build.json)"
+				"Start a server first, for example: box server start  (or set runTests false in build.json)"
 			);
 		}
 	}
@@ -334,11 +346,7 @@ component {
 		}
 	}
 
-	/**
-	 * Turns true and false into yes and no for reading.
-	 *
-	 * @value The value to show.
-	 */
+	/** Turns true and false into yes and no for reading. */
 	private string function yesNo( required boolean value ){
 		return arguments.value ? "yes" : "no";
 	}
